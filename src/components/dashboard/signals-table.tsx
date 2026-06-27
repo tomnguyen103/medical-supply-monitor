@@ -15,6 +15,7 @@ const muted = <span className="text-muted-foreground">-</span>;
 
 export function SignalsTable({ data }: { data: SignalListRow[] }) {
   const [selected, setSelected] = React.useState<SignalListRow | null>(null);
+  const closeDrawer = React.useCallback(() => setSelected(null), []);
   const columns = React.useMemo<ColumnDef<SignalListRow>[]>(
     () => [
       {
@@ -116,7 +117,7 @@ export function SignalsTable({ data }: { data: SignalListRow[] }) {
     <>
       <DataTable columns={columns} data={data} filterPlaceholder="Filter signals..." />
       {selected && (
-        <EvidenceDrawer row={selected} onClose={() => setSelected(null)} />
+        <EvidenceDrawer row={selected} onClose={closeDrawer} />
       )}
     </>
   );
@@ -130,22 +131,77 @@ function EvidenceDrawer({
   onClose: () => void;
 }) {
   const snapshot = row.snapshot;
+  const headingId = React.useId();
+  const dialogRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    const previousFocus = document.activeElement;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusable = getFocusableElements(dialog);
+    (focusable[0] ?? dialog).focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialog) return;
+      const elements = getFocusableElements(dialog);
+      if (elements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previousFocus instanceof HTMLElement) previousFocus.focus();
+    };
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50">
       <button
         type="button"
+        tabIndex={-1}
+        aria-hidden="true"
         className="absolute inset-0 bg-background/70 backdrop-blur-sm"
         aria-label="Close evidence drawer"
         onClick={onClose}
       />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-background shadow-2xl">
+      <aside
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        tabIndex={-1}
+        className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-background shadow-2xl outline-none"
+      >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-background px-6 py-5">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Evidence review
             </p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight">{row.title}</h2>
+            <h2 id={headingId} className="mt-1 text-lg font-semibold tracking-tight">
+              {row.title}
+            </h2>
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={onClose}>
             <X className="size-4" strokeWidth={1.75} />
@@ -157,7 +213,7 @@ function EvidenceDrawer({
           <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <SeverityBadge level={row.severity} />
-              <FreshnessBadge value={row.stalenessStatus} />
+              <FreshnessBadge value={snapshot?.stalenessStatus ?? row.stalenessStatus} />
               <Badge variant="secondary">{formatLabel(row.domain)}</Badge>
             </div>
             {row.summary && (
@@ -392,4 +448,19 @@ function coerceDate(date: Date | string | null): Date | null {
   if (!date) return null;
   const parsed = date instanceof Date ? date : new Date(date);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      [
+        "a[href]",
+        "button:not([disabled])",
+        "textarea:not([disabled])",
+        "input:not([disabled])",
+        "select:not([disabled])",
+        "[tabindex]:not([tabindex='-1'])",
+      ].join(","),
+    ),
+  ).filter((element) => !element.hasAttribute("disabled"));
 }

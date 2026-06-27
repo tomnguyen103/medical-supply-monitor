@@ -15,6 +15,15 @@ describe("scoreItemRisk", () => {
     expect(scoreItemRisk(baseInput)).toEqual(scoreItemRisk(baseInput));
   });
 
+  it("canonicalizes signal order before building audit inputs", () => {
+    const reversed = {
+      ...baseInput,
+      signals: [...baseInput.signals].reverse(),
+    };
+
+    expect(scoreItemRisk(reversed)).toEqual(scoreItemRisk(baseInput));
+  });
+
   it("computes a known reproducible result", () => {
     const result = scoreItemRisk(baseInput);
 
@@ -93,6 +102,23 @@ describe("scoreItemRisk", () => {
     expect(result.riskLevel).toBe("info");
     expect(result.confidence).toBe(0.55);
     expect(result.stalenessStatus).toBe("unknown");
+  });
+
+  it("does not describe unknown sole-source posture as multi-source", () => {
+    const result = scoreItemRisk({
+      asOf: "2026-06-27T12:00:00.000Z",
+      signals: [],
+      isSoleSource: null,
+    });
+    const soleSource = result.components.find(
+      (component) => component.factor === "sole_source_exposure",
+    );
+
+    expect(soleSource).toMatchObject({
+      rawValue: null,
+      contribution: 0,
+      explanation: "No sole-source posture is available.",
+    });
   });
 });
 

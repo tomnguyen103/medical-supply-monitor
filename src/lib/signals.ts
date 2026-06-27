@@ -117,10 +117,16 @@ export async function listRiskSignals(
     const snapshotEvidence = snapshot
       ? evidenceBySnapshot.get(snapshot.id) ?? []
       : [];
+    const evidence = new Map(
+      [...signalEvidence, ...snapshotEvidence].map((artifact) => [
+        artifact.id,
+        artifact,
+      ]),
+    );
     return {
       ...row,
       snapshot,
-      evidence: [...signalEvidence, ...snapshotEvidence],
+      evidence: Array.from(evidence.values()),
     };
   });
 }

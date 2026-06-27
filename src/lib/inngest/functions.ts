@@ -21,6 +21,17 @@ export const dailyRiskRefresh = inngest.createFunction(
     const scoring = await step.run("score-risk-snapshots", async () => {
       return runRiskScoring();
     });
+    if (!ingestion.ok || !scoring.ok) {
+      throw new Error(
+        [
+          "Risk refresh failed.",
+          `ingestion_failed=${ingestion.failed}`,
+          `ingestion_skipped=${ingestion.skipped ?? "none"}`,
+          `scoring_failed=${scoring.failed}`,
+          `scoring_skipped=${scoring.skipped ?? "none"}`,
+        ].join(" "),
+      );
+    }
     return { ok: ingestion.ok && scoring.ok, ingestion, scoring };
   },
 );

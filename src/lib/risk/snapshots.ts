@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 
 import type {
@@ -43,15 +43,13 @@ interface TenantScoreInput {
   itemName: string;
   signals: ScoringSignalInput[];
   daysOnHand: number | null;
-  isSoleSource: boolean;
-  previousSnapshot:
-    | {
-        id: string;
-        riskScore: number;
-        riskLevel: Severity;
-        computedAt: Date;
-      }
-    | null;
+  isSoleSource: boolean | null;
+  previousSnapshots: {
+    id: string;
+    riskScore: number;
+    riskLevel: Severity;
+    computedAt: Date;
+  }[];
 }
 
 export async function runRiskScoring(
@@ -71,9 +69,10 @@ export async function runRiskScoring(
 
   const asOf = options.asOf ?? new Date();
   const orgRows = await db.select({ id: organizations.id }).from(organizations);
-  const tenantResults = await Promise.all(
-    orgRows.map((org) => scoreTenant(org.id, asOf)),
-  );
+  const tenantResults = [];
+  for (const org of orgRows) {
+    tenantResults.push(await scoreTenant(org.id, asOf));
+  }
 
   return {
     ok: tenantResults.every((result) => result.failed === 0),
@@ -99,42 +98,81 @@ async function scoreTenant(organizationId: string, asOf: Date) {
         daysOnHand: input.daysOnHand,
         isSoleSource: input.isSoleSource,
       });
+      const snapshotId = buildSnapshotId({
+        organizationId,
+        itemId: input.itemId,
+        scoringVersion: result.scoringVersion,
+        asOf,
+      });
+      const previousSnapshot =
+        input.previousSnapshots.find((snapshot) => snapshot.id !== snapshotId) ??
+        null;
       const changeSummary = summarizeSnapshotChange(
         {
           riskScore: result.riskScore,
           riskLevel: result.riskLevel,
         },
-        input.previousSnapshot,
+        previousSnapshot,
       );
-      const snapshotId = randomUUID();
+      const evidenceValues = buildSnapshotEvidenceValues({
+        organizationId,
+        snapshotId,
+        itemName: input.itemName,
+        computedAt: asOf,
+        result,
+        changeSummary,
+      });
       await db.batch([
-        db.insert(riskSnapshots).values({
-          id: snapshotId,
-          organizationId,
-          itemId: input.itemId,
-          scoringVersion: result.scoringVersion,
-          riskScore: result.riskScore,
-          riskLevel: result.riskLevel,
-          confidence: result.confidence,
-          components: result.components,
-          inputs: result.inputs,
-          stalenessStatus: result.stalenessStatus,
-          worstSignalAt: result.worstSignalAt,
-          rationale: result.rationale,
-          previousSnapshotId: input.previousSnapshot?.id,
-          changeSummary,
-          computedAt: asOf,
-        }),
-        db.insert(evidenceArtifacts).values(
-          buildSnapshotEvidenceValues({
+        db
+          .insert(riskSnapshots)
+          .values({
+            id: snapshotId,
             organizationId,
-            snapshotId,
-            itemName: input.itemName,
-            computedAt: asOf,
-            result,
+            itemId: input.itemId,
+            scoringVersion: result.scoringVersion,
+            riskScore: result.riskScore,
+            riskLevel: result.riskLevel,
+            confidence: result.confidence,
+            components: result.components,
+            inputs: result.inputs,
+            stalenessStatus: result.stalenessStatus,
+            worstSignalAt: result.worstSignalAt,
+            rationale: result.rationale,
+            previousSnapshotId: previousSnapshot?.id,
             changeSummary,
+            computedAt: asOf,
+          })
+          .onConflictDoUpdate({
+            target: riskSnapshots.id,
+            set: {
+              scoringVersion: result.scoringVersion,
+              riskScore: result.riskScore,
+              riskLevel: result.riskLevel,
+              confidence: result.confidence,
+              components: result.components,
+              inputs: result.inputs,
+              stalenessStatus: result.stalenessStatus,
+              worstSignalAt: result.worstSignalAt,
+              rationale: result.rationale,
+              previousSnapshotId: previousSnapshot?.id,
+              changeSummary,
+              computedAt: asOf,
+            },
           }),
-        ),
+        db
+          .insert(evidenceArtifacts)
+          .values(evidenceValues)
+          .onConflictDoUpdate({
+            target: evidenceArtifacts.id,
+            set: {
+              type: evidenceValues.type,
+              title: evidenceValues.title,
+              sourceName: evidenceValues.sourceName,
+              capturedAt: evidenceValues.capturedAt,
+              contentHash: evidenceValues.contentHash,
+              payload: evidenceValues.payload,
+            },
+          }),
       ]);
 
       snapshots += 1;
@@ -257,19 +295,19 @@ async function loadTenantScoreInputs(
     }
   }
 
-  const previousSnapshotByItem = new Map<
+  const previousSnapshotsByItem = new Map<
     string,
-    TenantScoreInput["previousSnapshot"]
+    TenantScoreInput["previousSnapshots"]
   >();
   for (const row of previousSnapshotRows) {
-    if (!previousSnapshotByItem.has(row.itemId)) {
-      previousSnapshotByItem.set(row.itemId, {
-        id: row.id,
-        riskScore: row.riskScore,
-        riskLevel: row.riskLevel,
-        computedAt: row.computedAt,
-      });
-    }
+    const snapshots = previousSnapshotsByItem.get(row.itemId) ?? [];
+    snapshots.push({
+      id: row.id,
+      riskScore: row.riskScore,
+      riskLevel: row.riskLevel,
+      computedAt: row.computedAt,
+    });
+    previousSnapshotsByItem.set(row.itemId, snapshots);
   }
 
   return itemRows.map((item) => {
@@ -289,11 +327,10 @@ async function loadTenantScoreInputs(
       itemName: item.name,
       signals: Array.from(signalsById.values()),
       daysOnHand: latestInventoryByItem.get(item.id) ?? null,
-      isSoleSource: Boolean(
-        supplierStats?.hasExplicitSoleSource ||
-          (supplierStats && supplierStats.supplierIds.size === 1),
-      ),
-      previousSnapshot: previousSnapshotByItem.get(item.id) ?? null,
+      isSoleSource: supplierStats
+        ? supplierStats.hasExplicitSoleSource || supplierStats.supplierIds.size === 1
+        : null,
+      previousSnapshots: previousSnapshotsByItem.get(item.id) ?? [],
     };
   });
 }
@@ -347,6 +384,7 @@ function buildSnapshotEvidenceValues({
   };
 
   return {
+    id: buildSnapshotEvidenceId(snapshotId),
     organizationId,
     snapshotId,
     type: "computed",
@@ -358,8 +396,45 @@ function buildSnapshotEvidenceValues({
   } as const;
 }
 
+function buildSnapshotId({
+  organizationId,
+  itemId,
+  scoringVersion,
+  asOf,
+}: {
+  organizationId: string;
+  itemId: string;
+  scoringVersion: string;
+  asOf: Date;
+}): string {
+  return stableUuid(
+    [
+      "risk_snapshot",
+      organizationId,
+      itemId,
+      scoringVersion,
+      asOf.toISOString().slice(0, 10),
+    ].join(":"),
+  );
+}
+
+function buildSnapshotEvidenceId(snapshotId: string): string {
+  return stableUuid(["risk_snapshot_evidence", snapshotId].join(":"));
+}
+
 function hashPayload(payload: Record<string, unknown>): string {
   return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+function stableUuid(value: string): string {
+  const hex = createHash("sha256").update(value).digest("hex").slice(0, 32);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join("-");
 }
 
 function stableJson(value: unknown): string {

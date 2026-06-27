@@ -111,7 +111,9 @@ function levelFromScore(score: number): Severity {
 
 export function scoreItemRisk(input: ScoringInput): ScoringResult {
   const asOf = parseRequiredDate(input.asOf, "asOf");
-  const signals = input.signals.map((signal) => prepareSignal(signal, asOf));
+  const signals = [...input.signals]
+    .sort(compareSignalInputs)
+    .map((signal) => prepareSignal(signal, asOf));
   const components: RiskScoreComponent[] = [
     ...scoreSignalDomains(signals),
     scoreSoleSource(input.isSoleSource),
@@ -218,7 +220,7 @@ function scoreSignalDomains(signals: PreparedSignal[]): RiskScoreComponent[] {
     return {
       factor: `signal_${signal.domain}`,
       weight: round(normalizedWeight, 3),
-      rawValue: signal.severityScore,
+      rawValue: round(signal.adjustedSeverity * 100),
       contribution: round(
         signal.adjustedSeverity * normalizedWeight * SIGNAL_COMPONENT_CAP,
       ),
@@ -229,6 +231,16 @@ function scoreSignalDomains(signals: PreparedSignal[]): RiskScoreComponent[] {
 }
 
 function scoreSoleSource(isSoleSource: boolean | null | undefined): RiskScoreComponent {
+  if (isSoleSource == null) {
+    return {
+      factor: "sole_source_exposure",
+      weight: SOLE_SOURCE_CAP / 100,
+      rawValue: null,
+      contribution: 0,
+      explanation: "No sole-source posture is available.",
+    };
+  }
+
   const contribution = isSoleSource ? SOLE_SOURCE_CAP : 0;
   return {
     factor: "sole_source_exposure",
@@ -239,6 +251,26 @@ function scoreSoleSource(isSoleSource: boolean | null | undefined): RiskScoreCom
       ? "Single-source supply concentration adds risk."
       : "No single-source concentration is flagged.",
   };
+}
+
+function compareSignalInputs(
+  a: ScoringSignalInput,
+  b: ScoringSignalInput,
+): number {
+  return signalSortKey(a).localeCompare(signalSortKey(b));
+}
+
+function signalSortKey(signal: ScoringSignalInput): string {
+  return [
+    signal.domain,
+    signal.id ?? "",
+    signal.severityScore ?? "",
+    signal.confidence ?? "",
+    signal.stalenessStatus ?? "",
+    normalizeDateKey(signal.observedAt),
+    normalizeDateKey(signal.sourcePublishedAt),
+    normalizeDateKey(signal.lastFetchedAt),
+  ].join("|");
 }
 
 function scoreDaysOnHand(daysOnHand: number | null | undefined): RiskScoreComponent {
@@ -362,6 +394,10 @@ function parseOptionalDate(value: Date | string | null | undefined): Date | null
   if (value == null) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeDateKey(value: Date | string | null | undefined): string {
+  return parseOptionalDate(value)?.toISOString() ?? "";
 }
 
 function formatDomain(domain: RiskDomain): string {
