@@ -114,7 +114,7 @@ is scoped by `organization_id` and is filtered by it for tenant isolation.
 
 ```text
 Vercel Next.js app
- -> Clerk auth/orgs (tenancy)            src/middleware.ts, src/lib/auth/tenancy.ts
+ -> Clerk auth/orgs (tenancy)            src/proxy.ts, src/lib/auth/tenancy.ts
  -> Neon Postgres via Drizzle           src/lib/db/*
  -> Inngest jobs (ingest/score/alert)   src/lib/inngest/*, src/app/api/inngest/route.ts
  -> Upstash Redis (cache/cooldowns)     src/lib/redis/*

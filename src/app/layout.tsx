@@ -3,10 +3,11 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { ClerkProvider } from "@clerk/nextjs";
 
-import { integrations } from "@/lib/env";
+import { env, integrations } from "@/lib/env";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(env.app.url),
   title: {
     default: "Critical Medical Supply Resilience Monitor",
     template: "%s · Supply Resilience Monitor",

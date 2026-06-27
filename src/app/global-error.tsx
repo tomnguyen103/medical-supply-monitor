@@ -23,13 +23,18 @@ export default function GlobalError({
           justifyContent: "center",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           padding: "1.5rem",
+          // System colors so the error page adapts to light/dark without
+          // depending on the app's (possibly unloaded) stylesheet.
+          colorScheme: "light dark",
+          background: "Canvas",
+          color: "CanvasText",
         }}
       >
         <div style={{ maxWidth: "28rem", textAlign: "center" }}>
           <h1 style={{ fontSize: "1.125rem", fontWeight: 600 }}>
             Something went wrong
           </h1>
-          <p style={{ marginTop: "0.5rem", color: "#64748b" }}>
+          <p style={{ marginTop: "0.5rem", color: "GrayText" }}>
             An unexpected error occurred. The team has been notified if error
             monitoring is enabled.
           </p>

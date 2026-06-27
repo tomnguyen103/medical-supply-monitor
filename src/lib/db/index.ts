@@ -9,6 +9,11 @@ export const isDatabaseConfigured = integrations.database;
 
 type Database = NeonHttpDatabase<typeof schema>;
 
+// NOTE: the neon-http driver is single-statement — it does NOT support
+// interactive `db.transaction(...)`. For atomic multi-statement work use
+// `db.batch([...])`, or switch to `drizzle-orm/neon-serverless`. Relevant from
+// Phase 2 onward, once writes begin.
+
 let cached: Database | null = null;
 
 /**
