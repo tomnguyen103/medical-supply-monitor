@@ -1,6 +1,6 @@
 # Critical Medical Supply Resilience Monitor
 
-![Status](https://img.shields.io/badge/status-Phase_5_alerts_briefs-0f766e)
+![Status](https://img.shields.io/badge/status-Phase_6_AI_workflow-0f766e)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -26,11 +26,11 @@ final writes, or critical alert delivery. See [Product guardrails](#product-guar
 
 ---
 
-## Status: Phase 5 (Alerts + briefs)
+## Status: Phase 6 (AI workflow)
 
 This repository currently contains the Phase 1 foundation, Phase 2 catalog/import
-workflow, Phase 3 ingestion loop, Phase 4 scoring loop, and Phase 5 alert/brief
-loop:
+workflow, Phase 3 ingestion loop, Phase 4 scoring loop, Phase 5 alert/brief
+loop, and Phase 6 guarded AI workflow:
 
 - Next.js 16 / React 19 / TypeScript app, Vercel-ready
 - Clerk Organizations wiring (auth + tenancy), conditional and graceful
@@ -38,7 +38,7 @@ loop:
 - Inngest background-job scaffold + `/api/inngest` route
 - Upstash Redis client + rate-limit helper
 - Sentry instrumentation (client / server / edge)
-- LangSmith config + a LangGraph supervisor placeholder
+- LangSmith config + a compiled LangGraph supervisor workflow
 - Source-agnostic connector layer emitting a generic `RiskSignal`
 - Public feed connectors for openFDA shortages and recalls, FDA device
   shortages, OFAC, CISA KEV, USGS, NWS/NOAA, GDELT, plus keyed NASA FIRMS
@@ -52,12 +52,16 @@ loop:
   matched item/supplier, current score, evidence drawer, and score rationale
 - Alert rules CRUD, cooldown-aware evaluation, alert event history, in-app daily
   briefs, Slack/email delivery hooks, and human approval tasks for critical alerts
+- LangGraph workflow agents that draft risk brief and import-mapping summaries,
+  with a code-owned deterministic scorer node, compliance guard, critical
+  human-approval gate, LangSmith-safe traces, and tenant-scoped `agent_runs`
+  audit records
 - Protected dashboard shell + landing and auth surfaces
 
 Every integration **boots gracefully without credentials** ("not configured"
 state), so you can run the app immediately and switch features on by adding env
-vars. Later phases (AI workflow, hardening) remain scaffolded or intentionally
-limited until implemented.
+vars. Later hardening remains scaffolded or intentionally limited until
+implemented.
 
 ---
 
@@ -90,7 +94,7 @@ Fill the relevant keys in `.env.local` (see `.env.example` for the full list):
 | Upstash Redis | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Cache, rate limits, cooldowns |
 | Inngest | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Background jobs in production |
 | LangSmith | `LANGSMITH_API_KEY` (+ `LANGSMITH_TRACING=true`) | AI tracing / evals |
-| AI provider | `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) | LangGraph agents |
+| AI provider | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL` | LangGraph agents |
 | Notifications | `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `ALERT_TO_EMAIL`, `SLACK_WEBHOOK_URL` | Email and Slack alert delivery |
 
 ---

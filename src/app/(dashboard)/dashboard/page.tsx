@@ -12,7 +12,6 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
 const NEXT_STEPS = [
-  { phase: "Phase 6", text: "LangGraph agents, risk explanations, compliance guard" },
   { phase: "Phase 7", text: "RBAC polish, audit logs, rate limits, retention controls" },
 ];
 
@@ -24,7 +23,7 @@ export default async function OverviewPage() {
     <div className="space-y-8">
       <PageHeader
         title="Overview"
-        description="Foundation, catalog imports, ingestion, scoring, alerts, and daily briefs are live. AI workflow comes next."
+        description="Foundation, catalog imports, ingestion, scoring, alerts, daily briefs, and the guarded AI workflow are live."
       />
 
       {!integrations.database && (
@@ -74,7 +73,7 @@ export default async function OverviewPage() {
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-medium">What comes next</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Phase 5 alerts and briefs are in. Capabilities continue in order.
+              Phase 6 AI workflow is in. Hardening remains before demo readiness.
             </p>
           </div>
           <ul className="divide-y divide-border">

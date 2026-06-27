@@ -52,6 +52,7 @@ export const env = {
   },
   ai: {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    anthropicModel: process.env.ANTHROPIC_MODEL,
     openaiApiKey: process.env.OPENAI_API_KEY,
   },
   notifications: {
@@ -84,7 +85,8 @@ export const integrations = {
   inngest: present(env.inngest.eventKey) || present(env.inngest.signingKey),
   sentry: present(env.sentry.dsn),
   langsmith: present(env.langsmith.apiKey),
-  ai: present(env.ai.anthropicApiKey) || present(env.ai.openaiApiKey),
+  anthropic: present(env.ai.anthropicApiKey),
+  ai: present(env.ai.anthropicApiKey),
   resend: present(env.notifications.resendApiKey),
   slack: present(env.notifications.slackWebhookUrl),
   nasaFirms: present(env.connectors.nasaFirmsMapKey),

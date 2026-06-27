@@ -1,3 +1,4 @@
+import { runDailyBriefWorkflows } from "@/lib/ai/graph";
 import { runAlertEvaluation } from "@/lib/alerts/engine";
 import { runRiskIngestion } from "@/lib/ingestion/pipeline";
 import { runRiskScoring } from "@/lib/risk/snapshots";
@@ -45,7 +46,25 @@ export const dailyRiskRefresh = inngest.createFunction(
         ].join(" "),
       );
     }
-    return { ok: ingestion.ok && scoring.ok && alerts.ok, ingestion, scoring, alerts };
+    const ai = await step.run("run-ai-workflow", async () => {
+      return runDailyBriefWorkflows();
+    });
+    if (!ai.ok) {
+      throw new Error(
+        [
+          "Risk refresh AI workflow failed.",
+          `ai_failed=${ai.failed}`,
+          `ai_skipped=${ai.skipped ?? "none"}`,
+        ].join(" "),
+      );
+    }
+    return {
+      ok: ingestion.ok && scoring.ok && alerts.ok && ai.ok,
+      ingestion,
+      scoring,
+      alerts,
+      ai,
+    };
   },
 );
 
