@@ -24,6 +24,7 @@ next-env.d.ts
 
 # local tooling caches / indexes
 .codegraph/
+.swarm/
 
 # debug
 npm-debug.log*

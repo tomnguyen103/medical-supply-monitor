@@ -18,4 +18,6 @@ export function configureLangSmith(): void {
   process.env.LANGSMITH_API_KEY = env.langsmith.apiKey;
   process.env.LANGSMITH_PROJECT = env.langsmith.project;
   process.env.LANGSMITH_ENDPOINT = env.langsmith.endpoint;
+  process.env.LANGSMITH_HIDE_INPUTS = "true";
+  process.env.LANGSMITH_HIDE_OUTPUTS = "true";
 }
