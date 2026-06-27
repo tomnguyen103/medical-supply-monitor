@@ -12,7 +12,16 @@ export async function enforceActionRateLimit(
   action: string,
 ): Promise<ActionRateLimitResult> {
   const key = ["action", action, ctx.orgId, ctx.userId].join(":");
-  const result = await checkRateLimit(key);
+  let result: Awaited<ReturnType<typeof checkRateLimit>>;
+  try {
+    result = await checkRateLimit(key);
+  } catch {
+    return {
+      ok: false,
+      configured: true,
+      error: "Rate limiting is temporarily unavailable. Try again.",
+    };
+  }
   if (result.success) {
     return { ok: true, configured: result.configured };
   }

@@ -18,11 +18,11 @@ const SENSITIVE_KEYS = new Set([
   "password",
   "token",
   "secret",
-  "apiKey",
+  "apikey",
   "authorization",
   "cookie",
-  "rawPayload",
-  "rawPayloadRef",
+  "rawpayload",
+  "rawpayloadref",
   "payload",
   "body",
   "description",
@@ -43,6 +43,11 @@ export async function writeAuditLog(input: AuditLogInput): Promise<boolean> {
     });
     return true;
   } catch {
+    console.warn("[audit] Failed to write audit log.", {
+      action: input.action,
+      organizationId: input.organizationId,
+      actorType: input.actorType,
+    });
     return false;
   }
 }
@@ -72,7 +77,7 @@ function sanitizeObject(value: Record<string, unknown>, depth: number): Record<s
 }
 
 function isSensitiveKey(key: string): boolean {
-  return SENSITIVE_KEYS.has(key) || SENSITIVE_KEYS.has(key.toLowerCase());
+  return SENSITIVE_KEYS.has(key.toLowerCase().replace(/[^a-z0-9]/g, ""));
 }
 
 function redactText(value: string): string {

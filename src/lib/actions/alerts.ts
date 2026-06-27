@@ -62,11 +62,14 @@ export async function setAlertRuleEnabledAction(
   const ctx = await ready("manage_alerts", "set_alert_rule_enabled");
   if (!ctx) return;
 
-  await db
+  const [row] = await db
     .update(alertRules)
     .set({ enabled })
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
-  await auditAlertAction(ctx, "alerts.rule.enabled_update", ruleId, { enabled });
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.enabled_update", ruleId, { enabled });
+  }
   revalidatePath("/dashboard/alerts");
 }
 
@@ -86,7 +89,7 @@ export async function updateAlertRuleAction(
   const requireApprovalForCritical =
     formData.get("requireApprovalForCritical") === "on";
 
-  await db
+  const [row] = await db
     .update(alertRules)
     .set({
       name,
@@ -97,13 +100,16 @@ export async function updateAlertRuleAction(
       cooldownMinutes,
       requireApprovalForCritical,
     })
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
-  await auditAlertAction(ctx, "alerts.rule.update", ruleId, {
-    name,
-    domain,
-    minSeverity,
-    channels,
-  });
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.update", ruleId, {
+      name,
+      domain,
+      minSeverity,
+      channels,
+    });
+  }
   revalidatePath("/dashboard/alerts");
 }
 
@@ -111,10 +117,13 @@ export async function deleteAlertRuleAction(ruleId: string): Promise<void> {
   const ctx = await ready("manage_alerts", "delete_alert_rule");
   if (!ctx) return;
 
-  await db
+  const [row] = await db
     .delete(alertRules)
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
-  await auditAlertAction(ctx, "alerts.rule.delete", ruleId);
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.delete", ruleId);
+  }
   revalidatePath("/dashboard/alerts");
 }
 

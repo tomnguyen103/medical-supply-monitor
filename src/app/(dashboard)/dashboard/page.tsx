@@ -3,6 +3,7 @@ import { TriangleAlert } from "lucide-react";
 import { DemoWorkspacePanel } from "@/components/dashboard/demo-workspace-panel";
 import { PageHeader, StatTile } from "@/components/dashboard/primitives";
 import { SetupChecklist } from "@/components/dashboard/setup-checklist";
+import { getOrgContext, hasOrgPermission } from "@/lib/auth/tenancy";
 import { integrations } from "@/lib/env";
 import { getCatalogContext, getCatalogCounts } from "@/lib/catalog";
 import { SCORING_VERSION } from "@/lib/risk/scoring";
@@ -19,6 +20,12 @@ const NEXT_STEPS = [
 export default async function OverviewPage() {
   const ctx = await getCatalogContext();
   const counts = ctx.ready ? await getCatalogCounts(ctx.orgId) : null;
+  const orgCtx = ctx.ready ? await getOrgContext() : null;
+  const canManageCatalog =
+    ctx.ready &&
+    orgCtx !== null &&
+    orgCtx.orgId === ctx.orgId &&
+    hasOrgPermission(orgCtx, "manage_catalog");
 
   return (
     <div className="space-y-8">
@@ -70,7 +77,7 @@ export default async function OverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SetupChecklist />
-        {ctx.ready ? <DemoWorkspacePanel /> : <NextSteps />}
+        {ctx.ready && canManageCatalog ? <DemoWorkspacePanel /> : <NextSteps />}
       </div>
     </div>
   );

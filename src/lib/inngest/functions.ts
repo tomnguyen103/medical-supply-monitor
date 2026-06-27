@@ -79,6 +79,9 @@ export const retentionCleanup = inngest.createFunction(
     const retention = await step.run("cleanup-retained-data", async () => {
       return runRetentionCleanup({ apply: true });
     });
+    if (retention.skipped === "database-unconfigured") {
+      return retention;
+    }
     if (!retention.ok) {
       throw new Error(
         [

@@ -24,11 +24,13 @@ export async function setItemWatched(
   if (!rateLimit.ok) return { ok: false, error: rateLimit.error };
 
   try {
-    await db
+    const [row] = await db
       .update(items)
       .set({ isWatched: watched })
       // The organizationId predicate is the tenant-isolation boundary.
-      .where(and(eq(items.id, itemId), eq(items.organizationId, ctx.orgId)));
+      .where(and(eq(items.id, itemId), eq(items.organizationId, ctx.orgId)))
+      .returning({ id: items.id });
+    if (!row) return { ok: false, error: "Item not found." };
     await writeAuditLog({
       organizationId: ctx.orgId,
       actorType: "user",

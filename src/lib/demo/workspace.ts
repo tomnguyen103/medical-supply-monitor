@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { and, eq, inArray } from "drizzle-orm";
+
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
   alertRules,
@@ -229,6 +231,17 @@ export async function seedDemoWorkspace({
   inserted.inventorySnapshots = (
     await db.insert(inventorySnapshots).values(inventoryRows).onConflictDoNothing().returning({ id: inventorySnapshots.id })
   ).length;
+  const demoSignalSources = [...new Set(signalRows.map((row) => row.source))];
+  if (demoSignalSources.length > 0) {
+    await db
+      .delete(riskSignals)
+      .where(
+        and(
+          eq(riskSignals.organizationId, organizationId),
+          inArray(riskSignals.source, demoSignalSources),
+        ),
+      );
+  }
   inserted.riskSignals = (
     await db
       .insert(riskSignals)

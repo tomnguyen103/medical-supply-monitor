@@ -156,16 +156,26 @@ async function cleanupEvidence(organizationId: string, olderThan: Date, apply: b
         ),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(evidenceArtifacts)
+      .where(
+        and(
+          eq(evidenceArtifacts.organizationId, organizationId),
+          lt(evidenceArtifacts.capturedAt, olderThan),
+        ),
+      ),
+  );
+  await db
     .delete(evidenceArtifacts)
     .where(
       and(
         eq(evidenceArtifacts.organizationId, organizationId),
         lt(evidenceArtifacts.capturedAt, olderThan),
       ),
-    )
-    .returning({ id: evidenceArtifacts.id });
-  return rows.length;
+    );
+  return deleted;
 }
 
 async function cleanupAlertEvents(organizationId: string, olderThan: Date, apply: boolean) {
@@ -179,11 +189,18 @@ async function cleanupAlertEvents(organizationId: string, olderThan: Date, apply
         ),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(alertEvents)
+      .where(
+        and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)),
+      ),
+  );
+  await db
     .delete(alertEvents)
-    .where(and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)))
-    .returning({ id: alertEvents.id });
-  return rows.length;
+    .where(and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)));
+  return deleted;
 }
 
 async function cleanupAgentRuns(organizationId: string, olderThan: Date, apply: boolean) {
@@ -195,11 +212,16 @@ async function cleanupAgentRuns(organizationId: string, olderThan: Date, apply: 
         .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan))),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan))),
+  );
+  await db
     .delete(agentRuns)
-    .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan)))
-    .returning({ id: agentRuns.id });
-  return rows.length;
+    .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan)));
+  return deleted;
 }
 
 async function cleanupAuditLog(organizationId: string, olderThan: Date, apply: boolean) {
@@ -211,11 +233,16 @@ async function cleanupAuditLog(organizationId: string, olderThan: Date, apply: b
         .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan))),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(auditLog)
+      .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan))),
+  );
+  await db
     .delete(auditLog)
-    .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan)))
-    .returning({ id: auditLog.id });
-  return rows.length;
+    .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan)));
+  return deleted;
 }
 
 async function cleanupRiskSnapshots(organizationId: string, olderThan: Date, apply: boolean) {
@@ -229,11 +256,18 @@ async function cleanupRiskSnapshots(organizationId: string, olderThan: Date, app
         ),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(riskSnapshots)
+      .where(
+        and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)),
+      ),
+  );
+  await db
     .delete(riskSnapshots)
-    .where(and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)))
-    .returning({ id: riskSnapshots.id });
-  return rows.length;
+    .where(and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)));
+  return deleted;
 }
 
 async function cleanupRiskSignals(organizationId: string, olderThan: Date, apply: boolean) {
@@ -245,11 +279,16 @@ async function cleanupRiskSignals(organizationId: string, olderThan: Date, apply
         .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan))),
     );
   }
-  const rows = await db
+  const deleted = await countRows(
+    db
+      .select({ value: count() })
+      .from(riskSignals)
+      .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan))),
+  );
+  await db
     .delete(riskSignals)
-    .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan)))
-    .returning({ id: riskSignals.id });
-  return rows.length;
+    .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan)));
+  return deleted;
 }
 
 async function countRows(query: Promise<Array<{ value: number }>>) {

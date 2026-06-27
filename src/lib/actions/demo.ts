@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { writeAuditLog } from "@/lib/audit";
 import { getOrgContext, hasOrgPermission } from "@/lib/auth/tenancy";
+import type { OrgContext } from "@/lib/auth/tenancy";
 import { seedDemoWorkspace, type DemoWorkspaceSeedResult } from "@/lib/demo/workspace";
 import { isDatabaseConfigured } from "@/lib/db";
 import { enforceActionRateLimit } from "@/lib/security/rate-limit";
@@ -28,14 +29,21 @@ export async function seedDemoWorkspaceAction(): Promise<DemoWorkspaceActionResu
   if (!hasOrgPermission(ctx, "manage_catalog")) {
     return { ok: false, message: "Your organization role cannot seed demo data." };
   }
+  const demo = getDemoWorkspaceContext(ctx);
+  if (!demo) {
+    return {
+      ok: false,
+      message: "Select a Clerk organization with demo or sandbox in its slug before seeding.",
+    };
+  }
   const rateLimit = await enforceActionRateLimit(ctx, "seed_demo_workspace");
   if (!rateLimit.ok) {
     return { ok: false, message: rateLimit.error ?? "Too many requests." };
   }
 
   const result = await seedDemoWorkspace({
-    organizationId: ctx.orgId,
-    organizationName: ctx.orgSlug ? `${ctx.orgSlug} demo workspace` : "Demo Health System",
+    organizationId: demo.orgId,
+    organizationName: demo.name,
   });
   if (!result.ok) return { ok: false, message: "Demo workspace seed was skipped." };
 
@@ -63,5 +71,16 @@ export async function seedDemoWorkspaceAction(): Promise<DemoWorkspaceActionResu
     ok: true,
     message: "Demo workspace is ready.",
     inserted: result.inserted,
+  };
+}
+
+function getDemoWorkspaceContext(
+  ctx: Pick<OrgContext, "orgId" | "orgSlug">,
+): { orgId: string; name: string } | null {
+  const marker = `${ctx.orgSlug ?? ""} ${ctx.orgId}`.toLowerCase();
+  if (!/\b(demo|sandbox)\b/.test(marker)) return null;
+  return {
+    orgId: ctx.orgId,
+    name: ctx.orgSlug ? `${ctx.orgSlug} demo workspace` : "Demo Health System",
   };
 }

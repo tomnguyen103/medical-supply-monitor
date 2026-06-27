@@ -30,11 +30,13 @@ describe("audit metadata safety", () => {
     expect(
       sanitizeAuditMetadata({
         token: "secret",
+        api_key: "secret",
         note: "Contact jane@example.com at 512-555-1212.",
         nested: { rawPayload: { anything: true } },
       }),
     ).toEqual({
       token: "[redacted]",
+      api_key: "[redacted]",
       note: "Contact [redacted-email] at [redacted-phone].",
       nested: { rawPayload: "[redacted]" },
     });

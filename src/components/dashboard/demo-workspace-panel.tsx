@@ -14,8 +14,8 @@ export function DemoWorkspacePanel() {
       <div className="border-b border-border px-5 py-4">
         <h2 className="font-medium">Demo workspace</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Seed a non-PHI hospital operations demo with items, suppliers, signals,
-          scores, and alert rules.
+          In a demo or sandbox organization, seed non-PHI items, suppliers,
+          signals, scores, and alert rules.
         </p>
       </div>
       <div className="space-y-4 px-5 py-4">
