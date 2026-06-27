@@ -1,55 +1,157 @@
 import { describe, it, expect } from "vitest";
 
-import { scoreItemRisk, SCORING_VERSION, type ScoringInput } from "./scoring";
+import fixture from "./__fixtures__/scoring-input.json";
+import {
+  scoreItemRisk,
+  SCORING_VERSION,
+  summarizeSnapshotChange,
+  type ScoringInput,
+} from "./scoring";
 
-const baseInput: ScoringInput = {
-  signals: [
-    { domain: "shortage", severityScore: 80, confidence: 0.9, stalenessStatus: "fresh" },
-    { domain: "recall", severityScore: 40, confidence: 0.7, stalenessStatus: "aging" },
-  ],
-  daysOnHand: 7,
-  isSoleSource: true,
-};
+const baseInput = fixture as ScoringInput;
 
 describe("scoreItemRisk", () => {
-  it("is deterministic: identical inputs produce identical output", () => {
+  it("is deterministic for a saved fixture", () => {
     expect(scoreItemRisk(baseInput)).toEqual(scoreItemRisk(baseInput));
   });
 
-  it("computes a known, reproducible result", () => {
-    // worst severity 80*0.6=48, sole-source 100*0.25=25, 7 days-on-hand 50*0.15=7.5
-    const r = scoreItemRisk(baseInput);
-    expect(r.riskScore).toBe(80.5);
-    expect(r.riskLevel).toBe("critical");
-    expect(r.confidence).toBe(0.8); // mean(0.9, 0.7)
-    expect(r.scoringVersion).toBe(SCORING_VERSION);
+  it("canonicalizes signal order before building audit inputs", () => {
+    const reversed = {
+      ...baseInput,
+      signals: [...baseInput.signals].reverse(),
+    };
+
+    expect(scoreItemRisk(reversed)).toEqual(scoreItemRisk(baseInput));
   });
 
-  it("is explainable: components are present and sum to the score", () => {
-    const r = scoreItemRisk(baseInput);
-    const sum = r.components.reduce((s, c) => s + c.contribution, 0);
-    expect(r.components.length).toBeGreaterThanOrEqual(3);
-    expect(r.riskScore).toBeCloseTo(sum, 5);
-    for (const c of r.components) {
-      expect(typeof c.factor).toBe("string");
-      expect(typeof c.explanation).toBe("string");
+  it("computes a known reproducible result", () => {
+    const result = scoreItemRisk(baseInput);
+
+    expect(result.scoringVersion).toBe(SCORING_VERSION);
+    expect(result.riskScore).toBe(71);
+    expect(result.riskLevel).toBe("high");
+    expect(result.confidence).toBe(0.67);
+    expect(result.stalenessStatus).toBe("stale");
+    expect(result.worstSignalAt?.toISOString()).toBe("2026-06-26T12:00:00.000Z");
+  });
+
+  it("is explainable and components sum to the score", () => {
+    const result = scoreItemRisk(baseInput);
+    const sum = result.components.reduce(
+      (total, component) => total + component.contribution,
+      0,
+    );
+
+    expect(result.components.map((component) => component.factor)).toEqual([
+      "signal_recall",
+      "signal_shortage",
+      "signal_weather",
+      "sole_source_exposure",
+      "days_on_hand",
+    ]);
+    expect(result.riskScore).toBeCloseTo(sum, 5);
+    for (const component of result.components) {
+      expect(component.explanation.length).toBeGreaterThan(0);
     }
+  });
+
+  it("captures audit-safe inputs without raw payloads", () => {
+    const result = scoreItemRisk(baseInput);
+
+    expect(result.inputs).toMatchObject({
+      asOf: "2026-06-27T12:00:00.000Z",
+      daysOnHand: 6,
+      isSoleSource: true,
+    });
+    expect(JSON.stringify(result.inputs)).not.toContain("raw");
   });
 
   it("clamps the score to the 0-100 range", () => {
     const maxed = scoreItemRisk({
-      signals: [{ domain: "shortage", severityScore: 100, confidence: 1 }],
+      asOf: "2026-06-27T12:00:00.000Z",
+      signals: [
+        {
+          domain: "shortage",
+          severityScore: 100,
+          confidence: 1,
+          stalenessStatus: "fresh",
+          lastFetchedAt: "2026-06-27T12:00:00.000Z",
+        },
+        {
+          domain: "recall",
+          severityScore: 100,
+          confidence: 1,
+          stalenessStatus: "fresh",
+          lastFetchedAt: "2026-06-27T12:00:00.000Z",
+        },
+      ],
       daysOnHand: 0,
       isSoleSource: true,
     });
-    expect(maxed.riskScore).toBeLessThanOrEqual(100);
-    expect(maxed.riskScore).toBeGreaterThanOrEqual(0);
+    expect(maxed.riskScore).toBe(100);
+    expect(maxed.riskLevel).toBe("critical");
   });
 
   it("handles empty signals without throwing and defaults confidence", () => {
-    const r = scoreItemRisk({ signals: [] });
-    expect(r.riskScore).toBe(0);
-    expect(r.riskLevel).toBe("info");
-    expect(r.confidence).toBe(0.5);
+    const result = scoreItemRisk({
+      asOf: "2026-06-27T12:00:00.000Z",
+      signals: [],
+    });
+
+    expect(result.riskScore).toBe(0);
+    expect(result.riskLevel).toBe("info");
+    expect(result.confidence).toBe(0.55);
+    expect(result.stalenessStatus).toBe("unknown");
+  });
+
+  it("does not describe unknown sole-source posture as multi-source", () => {
+    const result = scoreItemRisk({
+      asOf: "2026-06-27T12:00:00.000Z",
+      signals: [],
+      isSoleSource: null,
+    });
+    const soleSource = result.components.find(
+      (component) => component.factor === "sole_source_exposure",
+    );
+
+    expect(soleSource).toMatchObject({
+      rawValue: null,
+      contribution: 0,
+      explanation: "No sole-source posture is available.",
+    });
+  });
+});
+
+describe("summarizeSnapshotChange", () => {
+  it("summarizes the first snapshot without claiming a change", () => {
+    const result = scoreItemRisk(baseInput);
+
+    expect(summarizeSnapshotChange(result, null)).toMatchObject({
+      status: "initial",
+      changed: false,
+      deltaScore: null,
+      currentRiskLevel: "high",
+    });
+  });
+
+  it("summarizes score and level changes from the previous snapshot", () => {
+    const result = scoreItemRisk(baseInput);
+
+    expect(
+      summarizeSnapshotChange(result, {
+        id: "snap-prev",
+        riskScore: 45,
+        riskLevel: "moderate",
+        computedAt: new Date("2026-06-26T12:00:00.000Z"),
+      }),
+    ).toMatchObject({
+      status: "compared",
+      changed: true,
+      direction: "increased",
+      deltaScore: 26,
+      previousSnapshotId: "snap-prev",
+      previousRiskLevel: "moderate",
+      currentRiskLevel: "high",
+    });
   });
 });

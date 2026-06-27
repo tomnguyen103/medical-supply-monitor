@@ -1,6 +1,6 @@
 # Critical Medical Supply Resilience Monitor
 
-![Status](https://img.shields.io/badge/status-Phase_3_ingestion-0f766e)
+![Status](https://img.shields.io/badge/status-Phase_4_scoring-0f766e)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -26,10 +26,10 @@ final writes, or critical alert delivery. See [Product guardrails](#product-guar
 
 ---
 
-## Status: Phase 3 (Ingestion)
+## Status: Phase 4 (Risk scoring)
 
 This repository currently contains the Phase 1 foundation, Phase 2 catalog/import
-workflow, and Phase 3 ingestion loop:
+workflow, Phase 3 ingestion loop, and Phase 4 scoring loop:
 
 - Next.js 16 / React 19 / TypeScript app, Vercel-ready
 - Clerk Organizations wiring (auth + tenancy), conditional and graceful
@@ -41,19 +41,20 @@ workflow, and Phase 3 ingestion loop:
 - Source-agnostic connector layer emitting a generic `RiskSignal`
 - Public feed connectors for openFDA shortages and recalls, FDA device
   shortages, OFAC, CISA KEV, USGS, NWS/NOAA, GDELT, plus keyed NASA FIRMS
-- Deterministic, versioned, explainable scoring skeleton
+- Deterministic, versioned, explainable scoring with freshness decay, domain
+  weights, sole-source exposure, days-on-hand, and persisted risk snapshots
 - CSV import population for item identifiers such as NDC, GTIN, UPC, SKU, MPN,
   FDA application number, and RxCUI
 - Event-triggered Inngest risk refresh that matches normalized signals to each
   tenant catalog and stores evidence artifacts
 - Tenant-scoped risk signals dashboard with severity, freshness, confidence,
-  matched item/supplier, and evidence links
+  matched item/supplier, current score, evidence drawer, and score rationale
 - Protected dashboard shell + landing and auth surfaces
 
 Every integration **boots gracefully without credentials** ("not configured"
 state), so you can run the app immediately and switch features on by adding env
-vars. Later phases (scoring, alerts, AI workflow, hardening) remain scaffolded
-or intentionally limited until implemented.
+vars. Later phases (alerts, AI workflow, hardening) remain scaffolded or
+intentionally limited until implemented.
 
 ---
 
