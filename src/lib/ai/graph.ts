@@ -129,6 +129,7 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-fable-5";
 /** Nodes implemented by code and never delegated to an LLM. */
 export const DETERMINISTIC_NODES: ReadonlySet<GraphNode> = new Set([
   "deterministic_scorer",
+  "import_mapping_agent",
   "critic_compliance_guard",
   "human_approval_gate",
 ]);
@@ -234,7 +235,7 @@ export async function runDailyBriefWorkflows(options: {
       });
       runs += 1;
       if (result.status === "blocked") blocked += 1;
-      if (result.requiresHumanApproval) awaitingApproval += 1;
+      if (result.status === "awaiting_human_approval") awaitingApproval += 1;
     } catch {
       failed += 1;
     }
@@ -554,11 +555,28 @@ function complianceGuardNode(state: WorkflowState): WorkflowUpdate {
     ]),
   ];
   const compliance = assessCompliance(texts);
+  const safeImportMapping = compliance.blocked
+    ? state.importMapping.map((suggestion) => ({
+        ...suggestion,
+        sourceHeader: redactSensitiveText(suggestion.sourceHeader),
+        reason: redactSensitiveText(suggestion.reason),
+      }))
+    : state.importMapping;
+  const safeDrafts = compliance.blocked
+    ? (Object.fromEntries(
+        Object.entries(state.agentDrafts).map(([node, draft]) => [
+          node,
+          { ...draft, text: redactSensitiveText(draft.text) },
+        ]),
+      ) as Drafts)
+    : state.agentDrafts;
   return {
     compliance,
+    importMapping: safeImportMapping,
     finalDraft: compliance.blocked ? null : state.finalDraft,
     status: compliance.blocked ? "blocked" : state.status,
     agentDrafts: {
+      ...safeDrafts,
       critic_compliance_guard: {
         node: "critic_compliance_guard",
         status: compliance.blocked ? "failed" : "drafted",
@@ -626,6 +644,11 @@ function buildScoreSummary(
 async function draftWithAnthropic(state: WorkflowState): Promise<string> {
   const apiKey = env.ai.anthropicApiKey;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
+  const promptPayload = buildAiPromptPayload(state);
+  const promptCompliance = assessCompliance([JSON.stringify(promptPayload)]);
+  if (promptCompliance.blocked) {
+    throw new Error("AI prompt blocked by compliance preflight.");
+  }
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -647,7 +670,7 @@ async function draftWithAnthropic(state: WorkflowState): Promise<string> {
       messages: [
         {
           role: "user",
-          content: JSON.stringify(buildAiPromptPayload(state)),
+          content: JSON.stringify(promptPayload),
         },
       ],
     }),
@@ -778,30 +801,34 @@ async function createLangSmithTrace({
   finishedAt: Date;
 }): Promise<string | null> {
   if (!isLangSmithEnabled) return null;
-  const id = randomUUID();
-  const client = new LangSmithClient({
-    apiKey: env.langsmith.apiKey,
-    apiUrl: env.langsmith.endpoint,
-  });
-  await client.createRun({
-    id,
-    name: "daily_brief_workflow",
-    run_type: "chain",
-    project_name: env.langsmith.project,
-    start_time: startedAt.toISOString(),
-    end_time: finishedAt.toISOString(),
-    inputs: sanitizeTracePayload(buildTraceInput(state)) as Record<string, unknown>,
-    outputs: sanitizeTracePayload(buildTraceOutput(state)) as Record<string, unknown>,
-    extra: {
-      metadata: {
-        graph: "daily_brief_workflow",
-        model: state.model,
-        scoringVersion: state.scoreSummary?.scoringVersion ?? SCORING_VERSION,
+  try {
+    const id = randomUUID();
+    const client = new LangSmithClient({
+      apiKey: env.langsmith.apiKey,
+      apiUrl: env.langsmith.endpoint,
+    });
+    await client.createRun({
+      id,
+      name: "daily_brief_workflow",
+      run_type: "chain",
+      project_name: env.langsmith.project,
+      start_time: startedAt.toISOString(),
+      end_time: finishedAt.toISOString(),
+      inputs: sanitizeTracePayload(buildTraceInput(state)) as Record<string, unknown>,
+      outputs: sanitizeTracePayload(buildTraceOutput(state)) as Record<string, unknown>,
+      extra: {
+        metadata: {
+          graph: "daily_brief_workflow",
+          model: state.model,
+          scoringVersion: state.scoreSummary?.scoringVersion ?? SCORING_VERSION,
+        },
       },
-    },
-  });
-  await client.flush();
-  return id;
+    });
+    await client.flush();
+    return id;
+  } catch {
+    return null;
+  }
 }
 
 function buildAiPromptPayload(state: WorkflowState) {

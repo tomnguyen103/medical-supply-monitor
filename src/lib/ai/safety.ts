@@ -34,7 +34,19 @@ const COMPLIANCE_PATTERNS: Array<{
   {
     category: "phi",
     pattern: "date of birth",
-    regex: /\b(?:dob|date of birth)\s*[:#-]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/i,
+    regex:
+      /\b(?:dob|date of birth)(?:\s*[:#-]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4})?\b/i,
+  },
+  {
+    category: "phi",
+    pattern: "email address",
+    regex: /\b(?:email(?:\s*address)?|contact email|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/i,
+  },
+  {
+    category: "phi",
+    pattern: "phone number or header",
+    regex:
+      /\b(?:(?:phone|telephone|mobile|cell)(?:\s*(?:number|#))?|(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})\b/i,
   },
   {
     category: "phi",
@@ -72,9 +84,15 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
     "[redacted-patient-identifier]",
   ],
   [
+    /\b(?:patient\s+mrn|patient name|patient identifier|mrn)\b/gi,
+    "[redacted-patient-identifier]",
+  ],
+  [
     /\b(?:dob|date of birth)\s*[:#-]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi,
     "[redacted-dob]",
   ],
+  [/\b(?:dob|date of birth)\b/gi, "[redacted-dob]"],
+  [/\b(?:phone|telephone|mobile|cell)(?:\s*(?:number|#))?\b/gi, "[redacted-phone]"],
 ];
 
 export function assessCompliance(texts: string[]): ComplianceReport {

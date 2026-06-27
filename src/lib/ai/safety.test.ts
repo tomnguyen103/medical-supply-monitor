@@ -1,4 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/env", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/env")>("@/lib/env");
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      ai: {
+        ...actual.env.ai,
+        anthropicApiKey: undefined,
+        anthropicModel: undefined,
+      },
+    },
+    integrations: {
+      ...actual.integrations,
+      ai: false,
+      anthropic: false,
+      database: false,
+      langsmith: false,
+    },
+  };
+});
 
 import type { AiWorkflowSnapshot } from "@/lib/ai/graph";
 import {
@@ -55,6 +77,15 @@ describe("AI workflow safety", () => {
     expect(report.blocked).toBe(true);
     expect(report.violations.map((violation) => violation.category)).toEqual(
       expect.arrayContaining(["phi", "diagnosis_or_treatment", "drug_substitution"]),
+    );
+  });
+
+  it("blocks contact and date-of-birth identifiers before redaction paths", () => {
+    const report = assessCompliance(["Email, phone number, and DOB columns detected."]);
+
+    expect(report.blocked).toBe(true);
+    expect(report.violations.map((violation) => violation.pattern)).toEqual(
+      expect.arrayContaining(["email address", "phone number or header", "date of birth"]),
     );
   });
 
@@ -120,6 +151,7 @@ describe("AI workflow graph", () => {
 
     expect(result.status).toBe("blocked");
     expect(result.draft).toBeNull();
+    expect(result.importMapping[0]?.sourceHeader).toBe("[redacted-patient-identifier]");
     expect(result.compliance.violations.map((violation) => violation.category)).toContain(
       "phi",
     );
