@@ -31,21 +31,28 @@ async function deliverSlack(input: DeliveryInput): Promise<DeliveryResult> {
     return { status: "suppressed", error: "Slack webhook is not configured." };
   }
 
-  const response = await fetch(env.notifications.slackWebhookUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      text: `${input.title}\n${input.body}`,
-    }),
-  });
+  try {
+    const response = await fetch(env.notifications.slackWebhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: `${input.title}\n${input.body}`,
+      }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return {
+        status: "failed",
+        error: `Slack delivery failed with ${response.status}.`,
+      };
+    }
+    return { status: "sent" };
+  } catch {
     return {
       status: "failed",
-      error: `Slack delivery failed with ${response.status}.`,
+      error: "Slack delivery failed before receiving a response.",
     };
   }
-  return { status: "sent" };
 }
 
 async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
@@ -59,25 +66,32 @@ async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
     };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.notifications.resendApiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.notifications.alertFromEmail,
-      to: [env.notifications.alertToEmail],
-      subject: input.title,
-      text: input.body,
-    }),
-  });
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.notifications.resendApiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.notifications.alertFromEmail,
+        to: [env.notifications.alertToEmail],
+        subject: input.title,
+        text: input.body,
+      }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return {
+        status: "failed",
+        error: `Resend delivery failed with ${response.status}.`,
+      };
+    }
+    return { status: "sent" };
+  } catch {
     return {
       status: "failed",
-      error: `Resend delivery failed with ${response.status}.`,
+      error: "Resend delivery failed before receiving a response.",
     };
   }
-  return { status: "sent" };
 }

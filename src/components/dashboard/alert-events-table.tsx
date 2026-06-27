@@ -75,6 +75,26 @@ const columns: ColumnDef<AlertEventListRow>[] = [
     cell: ({ row }) => formatFreshness(row.original.freshness),
   },
   {
+    id: "evidence",
+    header: "Evidence",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <details className="max-w-[20rem] text-xs">
+        <summary className="cursor-pointer font-medium text-primary">View</summary>
+        <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-2 text-[11px] leading-5 text-muted-foreground">
+          {JSON.stringify(
+            {
+              evidence: row.original.evidence,
+              freshness: row.original.freshness,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
+    ),
+  },
+  {
     accessorKey: "createdAt",
     header: "Created",
     cell: ({ row }) => formatDate(row.original.createdAt),

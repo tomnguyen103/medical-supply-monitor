@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
   buildAlertPayload,
@@ -88,6 +88,34 @@ export async function runAlertEvaluation(
   };
 }
 
+export async function runAlertEvaluationForOrganization(
+  organizationId: string,
+  options: AlertEvaluationOptions = {},
+): Promise<AlertEvaluationSummary> {
+  if (!isDatabaseConfigured) {
+    return {
+      ok: false,
+      skipped: "database-unconfigured",
+      tenants: 0,
+      rules: 0,
+      events: 0,
+      briefs: 0,
+      sent: 0,
+      suppressed: 0,
+      awaitingApproval: 0,
+      failed: 0,
+    };
+  }
+
+  const asOf = options.asOf ?? new Date();
+  const tenant = await evaluateTenantAlerts(organizationId, asOf);
+  return {
+    ok: tenant.failed === 0,
+    tenants: 1,
+    ...tenant,
+  };
+}
+
 async function evaluateTenantAlerts(organizationId: string, asOf: Date) {
   const [rules, snapshots] = await Promise.all([
     loadEnabledRules(organizationId),
@@ -140,6 +168,16 @@ async function loadEnabledRules(organizationId: string): Promise<RuleRow[]> {
 }
 
 async function loadLatestSnapshots(organizationId: string): Promise<SnapshotLike[]> {
+  const latestSnapshot = db
+    .select({
+      itemId: riskSnapshots.itemId,
+      computedAt: sql<Date>`max(${riskSnapshots.computedAt})`.as("computed_at"),
+    })
+    .from(riskSnapshots)
+    .where(eq(riskSnapshots.organizationId, organizationId))
+    .groupBy(riskSnapshots.itemId)
+    .as("latest_snapshot");
+
   const rows = await db
     .select({
       id: riskSnapshots.id,
@@ -157,18 +195,19 @@ async function loadLatestSnapshots(organizationId: string): Promise<SnapshotLike
     })
     .from(riskSnapshots)
     .innerJoin(
+      latestSnapshot,
+      and(
+        eq(riskSnapshots.itemId, latestSnapshot.itemId),
+        eq(riskSnapshots.computedAt, latestSnapshot.computedAt),
+      ),
+    )
+    .innerJoin(
       items,
       and(eq(riskSnapshots.itemId, items.id), eq(items.organizationId, organizationId)),
     )
     .where(eq(riskSnapshots.organizationId, organizationId))
     .orderBy(desc(riskSnapshots.computedAt));
-
-  const latestByItem = new Map<string, SnapshotLike>();
-  for (const row of rows) {
-    if (latestByItem.has(row.itemId)) continue;
-    latestByItem.set(row.itemId, row);
-  }
-  return Array.from(latestByItem.values());
+  return rows;
 }
 
 async function createRuleAlertEvent({
@@ -193,83 +232,61 @@ async function createRuleAlertEvent({
     snapshot.id,
     channel,
   );
+  const requiresApproval =
+    snapshot.riskLevel === "critical" && rule.requireApprovalForCritical;
+  const outcome = await insertAlertEvent({
+      organizationId,
+      ruleId: rule.id,
+      itemId: snapshot.itemId,
+      snapshotId: snapshot.id,
+      severity: snapshot.riskLevel,
+      channel,
+      status: "queued",
+      title: payload.title,
+      body: payload.body,
+      evidence: payload.evidence,
+      freshness: payload.freshness,
+      confidence: payload.confidence,
+      dedupeKey,
+      requiresApproval,
+      asOf,
+    });
+  if (!outcome.eventId) return outcome;
+
   const cooldown = await reserveCooldown({
     organizationId,
-    ruleId: rule.id,
     itemId: snapshot.itemId,
+    ruleId: rule.id,
     channel,
     riskLevel: snapshot.riskLevel,
     cooldownMinutes: rule.cooldownMinutes,
   });
-
   if (cooldown.suppressed) {
-    return insertAlertEvent({
+    await updateAlertEventStatus({
       organizationId,
-      ruleId: rule.id,
-      itemId: snapshot.itemId,
-      snapshotId: snapshot.id,
-      severity: snapshot.riskLevel,
-      channel,
+      eventId: outcome.eventId,
       status: "suppressed",
-      title: payload.title,
-      body: payload.body,
-      evidence: payload.evidence,
-      freshness: payload.freshness,
-      confidence: payload.confidence,
-      dedupeKey,
-      requiresApproval: false,
       error: "Cooldown active.",
       asOf,
     });
+    return { ...outcome, suppressed: 1 };
   }
 
-  if (snapshot.riskLevel === "critical" && rule.requireApprovalForCritical) {
-    const outcome = await insertAlertEvent({
+  if (requiresApproval) {
+    await updateAlertEventStatus({
       organizationId,
-      ruleId: rule.id,
-      itemId: snapshot.itemId,
-      snapshotId: snapshot.id,
-      severity: snapshot.riskLevel,
-      channel,
+      eventId: outcome.eventId,
       status: "awaiting_approval",
-      title: payload.title,
-      body: payload.body,
-      evidence: payload.evidence,
-      freshness: payload.freshness,
-      confidence: payload.confidence,
-      dedupeKey,
-      requiresApproval: true,
       asOf,
     });
-    if (outcome.eventId) {
-      await createHumanApprovalTask({
-        organizationId,
-        alertEventId: outcome.eventId,
-        snapshot,
-        payload,
-      });
-    }
-    return outcome;
+    await createHumanApprovalTask({
+      organizationId,
+      alertEventId: outcome.eventId,
+      snapshot,
+      payload,
+    });
+    return { ...outcome, awaitingApproval: 1 };
   }
-
-  const outcome = await insertAlertEvent({
-    organizationId,
-    ruleId: rule.id,
-    itemId: snapshot.itemId,
-    snapshotId: snapshot.id,
-    severity: snapshot.riskLevel,
-    channel,
-    status: "queued",
-    title: payload.title,
-    body: payload.body,
-    evidence: payload.evidence,
-    freshness: payload.freshness,
-    confidence: payload.confidence,
-    dedupeKey,
-    requiresApproval: false,
-    asOf,
-  });
-  if (!outcome.eventId) return outcome;
 
   const delivery = await deliverAlert({ channel, title: payload.title, body: payload.body });
   const status =
@@ -278,14 +295,13 @@ async function createRuleAlertEvent({
       : delivery.status === "suppressed"
         ? "suppressed"
         : "failed";
-  await db
-    .update(alertEvents)
-    .set({
-      status,
-      sentAt: status === "sent" ? asOf : null,
-      error: delivery.error,
-    })
-    .where(and(eq(alertEvents.id, outcome.eventId), eq(alertEvents.organizationId, organizationId)));
+  await updateAlertEventStatus({
+    organizationId,
+    eventId: outcome.eventId,
+    status,
+    error: delivery.error,
+    asOf,
+  });
 
   return {
     ...outcome,
@@ -293,6 +309,29 @@ async function createRuleAlertEvent({
     suppressed: status === "suppressed" ? 1 : 0,
     failed: status === "failed" ? 1 : 0,
   };
+}
+
+async function updateAlertEventStatus({
+  organizationId,
+  eventId,
+  status,
+  error,
+  asOf,
+}: {
+  organizationId: string;
+  eventId: string;
+  status: "sent" | "failed" | "suppressed" | "awaiting_approval";
+  error?: string;
+  asOf: Date;
+}) {
+  await db
+    .update(alertEvents)
+    .set({
+      status,
+      sentAt: status === "sent" ? asOf : null,
+      error,
+    })
+    .where(and(eq(alertEvents.id, eventId), eq(alertEvents.organizationId, organizationId)));
 }
 
 async function createDailyBriefEvent(
@@ -453,10 +492,11 @@ async function reserveCooldown({
     channel,
     riskLevel,
   ].join(":");
-  const existing = await redis.get(key);
-  if (existing) return { suppressed: true, configured: true };
-  await redis.set(key, "1", { ex: cooldownMinutes * 60 });
-  return { suppressed: false, configured: true };
+  const reserved = await redis.set(key, "1", {
+    ex: cooldownMinutes * 60,
+    nx: true,
+  });
+  return { suppressed: reserved !== "OK", configured: true };
 }
 
 function highestSeverity(snapshots: SnapshotLike[]) {

@@ -31,7 +31,7 @@ export default async function AlertsPage() {
 async function AlertsContent({ organizationId }: { organizationId: string }) {
   const [rules, events] = await Promise.all([
     listAlertRules(organizationId),
-    listAlertEvents(organizationId),
+    listAlertEvents(organizationId, 100),
   ]);
 
   return (
@@ -48,7 +48,7 @@ async function AlertsContent({ organizationId }: { organizationId: string }) {
           <div>
             <h2 className="font-medium">Event history</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Every alert and brief includes evidence, freshness, and confidence.
+              Latest 100 events. Every alert and brief includes evidence, freshness, and confidence.
             </p>
           </div>
           <AlertEventsTable data={events} />

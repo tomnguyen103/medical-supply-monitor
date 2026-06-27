@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { runAlertEvaluation } from "@/lib/alerts/engine";
+import { runAlertEvaluationForOrganization } from "@/lib/alerts/engine";
 import { getOrgContext } from "@/lib/auth/tenancy";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
@@ -60,6 +60,38 @@ export async function setAlertRuleEnabledAction(
   revalidatePath("/dashboard/alerts");
 }
 
+export async function updateAlertRuleAction(
+  ruleId: string,
+  formData: FormData,
+): Promise<void> {
+  if (!isDatabaseConfigured) return;
+  const ctx = await getOrgContext();
+  if (!ctx) return;
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const domain = parseDomain(formData.get("domain"));
+  const minSeverity = parseSeverity(formData.get("minSeverity")) ?? "high";
+  const channels = parseChannels(formData.getAll("channels"));
+  const cooldownMinutes = parsePositiveInt(formData.get("cooldownMinutes"), 720);
+  const requireApprovalForCritical =
+    formData.get("requireApprovalForCritical") === "on";
+
+  await db
+    .update(alertRules)
+    .set({
+      name,
+      description: String(formData.get("description") ?? "").trim() || null,
+      domain,
+      minSeverity,
+      channels,
+      cooldownMinutes,
+      requireApprovalForCritical,
+    })
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
+  revalidatePath("/dashboard/alerts");
+}
+
 export async function deleteAlertRuleAction(ruleId: string): Promise<void> {
   if (!isDatabaseConfigured) return;
   const ctx = await getOrgContext();
@@ -72,7 +104,10 @@ export async function deleteAlertRuleAction(ruleId: string): Promise<void> {
 }
 
 export async function runAlertEvaluationAction(): Promise<void> {
-  await runAlertEvaluation();
+  if (!isDatabaseConfigured) return;
+  const ctx = await getOrgContext();
+  if (!ctx) return;
+  await runAlertEvaluationForOrganization(ctx.orgId);
   revalidatePath("/dashboard/alerts");
 }
 
@@ -106,5 +141,7 @@ function parseChannels(values: FormDataEntryValue[]): AlertChannel[] {
 function parsePositiveInt(value: FormDataEntryValue | null, fallback: number) {
   if (typeof value !== "string") return fallback;
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 2_147_483_647
+    ? parsed
+    : fallback;
 }

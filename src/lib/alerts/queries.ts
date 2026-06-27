@@ -36,6 +36,8 @@ export interface AlertEventListRow {
   riskScore: number | null;
 }
 
+const DEFAULT_EVENT_LIMIT = 100;
+
 export function listAlertRules(organizationId: string) {
   return db
     .select()
@@ -46,6 +48,7 @@ export function listAlertRules(organizationId: string) {
 
 export async function listAlertEvents(
   organizationId: string,
+  limit = DEFAULT_EVENT_LIMIT,
 ): Promise<AlertEventListRow[]> {
   return db
     .select({
@@ -78,5 +81,6 @@ export async function listAlertEvents(
       ),
     )
     .where(eq(alertEvents.organizationId, organizationId))
-    .orderBy(desc(alertEvents.createdAt));
+    .orderBy(desc(alertEvents.createdAt))
+    .limit(limit);
 }

@@ -22,10 +22,7 @@ export const dailyRiskRefresh = inngest.createFunction(
     const scoring = await step.run("score-risk-snapshots", async () => {
       return runRiskScoring();
     });
-    const alerts = await step.run("evaluate-alerts-and-briefs", async () => {
-      return runAlertEvaluation();
-    });
-    if (!ingestion.ok || !scoring.ok || !alerts.ok) {
+    if (!ingestion.ok || !scoring.ok) {
       throw new Error(
         [
           "Risk refresh failed.",
@@ -33,6 +30,16 @@ export const dailyRiskRefresh = inngest.createFunction(
           `ingestion_skipped=${ingestion.skipped ?? "none"}`,
           `scoring_failed=${scoring.failed}`,
           `scoring_skipped=${scoring.skipped ?? "none"}`,
+        ].join(" "),
+      );
+    }
+    const alerts = await step.run("evaluate-alerts-and-briefs", async () => {
+      return runAlertEvaluation();
+    });
+    if (!alerts.ok) {
+      throw new Error(
+        [
+          "Risk refresh alert evaluation failed.",
           `alerts_failed=${alerts.failed}`,
           `alerts_skipped=${alerts.skipped ?? "none"}`,
         ].join(" "),
