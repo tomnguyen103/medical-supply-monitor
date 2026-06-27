@@ -3,24 +3,30 @@ import { TriangleAlert } from "lucide-react";
 import { PageHeader, StatTile } from "@/components/dashboard/primitives";
 import { SetupChecklist } from "@/components/dashboard/setup-checklist";
 import { integrations } from "@/lib/env";
+import { getCatalogContext, getCatalogCounts } from "@/lib/catalog";
 import { SCORING_VERSION } from "@/lib/risk/scoring";
 import { DAILY_BRIEF_GRAPH } from "@/lib/ai/graph";
 
+// Reads per-tenant catalog counts: always render per-request.
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
 const NEXT_STEPS = [
-  { phase: "Phase 2", text: "CSV import, item catalog, suppliers, facilities, watchlists" },
   { phase: "Phase 3", text: "Connector framework and openFDA shortage / recall ingestion" },
   { phase: "Phase 4", text: "Risk snapshots, scoring versions, evidence drawer, daily diff" },
   { phase: "Phase 5", text: "Alert rules, cooldowns, Slack / email delivery, daily brief" },
+  { phase: "Phase 6", text: "LangGraph agents, risk explanations, compliance guard" },
 ];
 
-export default function OverviewPage() {
+export default async function OverviewPage() {
+  const ctx = await getCatalogContext();
+  const counts = ctx.ready ? await getCatalogCounts(ctx.orgId) : null;
+
   return (
     <div className="space-y-8">
       <PageHeader
         title="Overview"
-        description="Foundation is live. Configure integrations and import a catalog to begin monitoring."
+        description="Foundation and catalog are live. Import supplies and connect data sources to begin monitoring."
       />
 
       {!integrations.database && (
@@ -42,9 +48,21 @@ export default function OverviewPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Monitored items" value="0" hint="Import a catalog to begin" />
-        <StatTile label="Active risk signals" value="0" hint="Connectors arrive in Phase 3" />
-        <StatTile label="Critical alerts" value="0" hint="Alert delivery arrives in Phase 5" />
+        <StatTile
+          label="Monitored items"
+          value={counts ? String(counts.items) : "0"}
+          hint={counts ? `${counts.watched} on watchlist` : "Import a catalog to begin"}
+        />
+        <StatTile
+          label="Suppliers"
+          value={counts ? String(counts.suppliers) : "0"}
+          hint="Supplier exposure"
+        />
+        <StatTile
+          label="Facilities"
+          value={counts ? String(counts.facilities) : "0"}
+          hint="Sites you monitor"
+        />
         <StatTile
           label="Scoring version"
           value={SCORING_VERSION}
@@ -58,15 +76,13 @@ export default function OverviewPage() {
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-medium">What comes next</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Phase 1 ships the foundation. Capabilities land in order.
+              Phase 2 (catalog + imports) is in. Capabilities land in order.
             </p>
           </div>
           <ul className="divide-y divide-border">
             {NEXT_STEPS.map((step) => (
               <li key={step.phase} className="flex items-start gap-3 px-5 py-3">
-                <span className="mt-0.5 font-mono text-xs text-primary">
-                  {step.phase}
-                </span>
+                <span className="mt-0.5 font-mono text-xs text-primary">{step.phase}</span>
                 <span className="text-sm text-muted-foreground">{step.text}</span>
               </li>
             ))}

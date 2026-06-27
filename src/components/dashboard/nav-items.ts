@@ -1,4 +1,4 @@
-import { Bell, Boxes, Factory, LayoutDashboard, Radar } from "lucide-react";
+import { Bell, Boxes, Building2, Factory, LayoutDashboard, Radar } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavItem {
@@ -11,6 +11,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/items", label: "Items", icon: Boxes },
   { href: "/dashboard/suppliers", label: "Suppliers", icon: Factory },
+  { href: "/dashboard/facilities", label: "Facilities", icon: Building2 },
   { href: "/dashboard/signals", label: "Risk signals", icon: Radar },
   { href: "/dashboard/alerts", label: "Alerts", icon: Bell },
 ];
