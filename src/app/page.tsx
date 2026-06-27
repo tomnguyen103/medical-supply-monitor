@@ -156,9 +156,9 @@ export default function LandingPage() {
 
         {/* Promise band — four questions, dividers not cards */}
         <section className="border-y border-border bg-muted/30">
-          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-px overflow-hidden px-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-0 lg:divide-x lg:divide-border">
             {PROMISE.map((p) => (
-              <div key={p.title} className="bg-transparent py-8 sm:px-6 sm:first:pl-0 lg:px-6">
+              <div key={p.title} className="py-8 lg:px-6 lg:first:pl-0 lg:last:pr-0">
                 <p.icon className="size-5 text-primary" strokeWidth={1.75} />
                 <h2 className="mt-3 text-sm font-semibold">{p.title}</h2>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">

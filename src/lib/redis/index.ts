@@ -38,14 +38,26 @@ function getRateLimiter(): Ratelimit | null {
 }
 
 /**
- * Sliding-window rate-limit check. When Redis is not configured this allows the
- * request (so local dev is unblocked) and reports `configured: false`.
+ * Sliding-window rate-limit check.
+ *
+ * When Redis is not configured this FAILS OPEN (allows the request) so local
+ * dev is unblocked, and reports `configured: false`. To avoid a silent failure,
+ * it warns in production — callers handling sensitive endpoints should inspect
+ * `configured` and decide whether to hard-fail instead of allowing traffic
+ * through unmetered.
  */
 export async function checkRateLimit(
   identifier: string,
 ): Promise<{ success: boolean; configured: boolean }> {
   const limiter = getRateLimiter();
-  if (!limiter) return { success: true, configured: false };
+  if (!limiter) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "[rate-limit] Upstash Redis is not configured; requests are NOT being rate limited.",
+      );
+    }
+    return { success: true, configured: false };
+  }
   const { success } = await limiter.limit(identifier);
   return { success, configured: true };
 }

@@ -15,7 +15,7 @@ const handler = clerkConfigured
     })
   : null;
 
-export default function middleware(req: NextRequest, event: NextFetchEvent) {
+export default function proxy(req: NextRequest, event: NextFetchEvent) {
   if (handler) {
     return handler(req, event);
   }

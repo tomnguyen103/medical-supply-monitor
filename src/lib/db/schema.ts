@@ -656,6 +656,10 @@ export const agentRuns = pgTable(
   "agent_runs",
   {
     id: id(),
+    // Nullable BY DESIGN (intentional exception to "every business table is
+    // tenant-scoped"): most runs are tenant-scoped, but system-level runs (e.g.
+    // connector health checks) have no org. Tenant-facing queries MUST filter by
+    // organizationId and treat null-org rows as system-only.
     organizationId: text("organization_id").references(() => organizations.id, {
       onDelete: "cascade",
     }),
@@ -711,6 +715,10 @@ export const auditLog = pgTable(
   "audit_log",
   {
     id: id(),
+    // Nullable BY DESIGN (intentional exception to "every business table is
+    // tenant-scoped"): system-level audit entries have no single org. Tenant-
+    // facing queries MUST filter by organizationId and treat null-org rows as
+    // system-only.
     organizationId: text("organization_id").references(() => organizations.id, {
       onDelete: "cascade",
     }),
