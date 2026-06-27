@@ -1,9 +1,10 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { db, isDatabaseConfigured } from "@/lib/db";
-import { items, suppliers, facilities } from "@/lib/db/schema";
+import { items, itemIdentifiers, suppliers, facilities } from "@/lib/db/schema";
 import { getOrgContext } from "@/lib/auth/tenancy";
 import {
   parseCsv,
@@ -65,12 +66,42 @@ export async function importItemsAction(
   if (valid.length === 0) return failure("No valid rows found in the file.", errors);
 
   try {
+    const itemRows = valid.map((v) => {
+      const { identifiers, ...item } = v;
+      return {
+        id: randomUUID(),
+        identifiers,
+        item: { organizationId: gate.orgId, ...item },
+      };
+    });
     const inserted = await db
       .insert(items)
-      .values(valid.map((v) => ({ organizationId: gate.orgId, ...v })))
+      .values(itemRows.map((row) => ({ id: row.id, ...row.item })))
       .onConflictDoNothing()
       .returning({ id: items.id });
+
+    const insertedIds = new Set(inserted.map((row) => row.id));
+    const identifierRows = itemRows
+      .filter((row) => insertedIds.has(row.id))
+      .flatMap((row) =>
+        row.identifiers.map((identifier) => ({
+          organizationId: gate.orgId,
+          itemId: row.id,
+          type: identifier.type,
+          value: identifier.value,
+          isPrimary: identifier.isPrimary,
+        })),
+      );
+
+    if (identifierRows.length > 0) {
+      await db
+        .insert(itemIdentifiers)
+        .values(identifierRows)
+        .onConflictDoNothing();
+    }
+
     revalidatePath("/dashboard/items");
+    revalidatePath("/dashboard/signals");
     revalidatePath("/dashboard");
     return {
       ok: true,

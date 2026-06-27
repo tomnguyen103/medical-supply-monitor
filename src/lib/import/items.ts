@@ -19,6 +19,26 @@ export const ITEM_CRITICALITIES = ["low", "medium", "high", "life_critical"] as 
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 export type ItemCriticality = (typeof ITEM_CRITICALITIES)[number];
 
+export const ITEM_IDENTIFIER_TYPES = [
+  "ndc",
+  "gtin",
+  "upc",
+  "hibcc",
+  "sku",
+  "mpn",
+  "fda_app_no",
+  "rxcui",
+  "other",
+] as const;
+
+export type ItemIdentifierType = (typeof ITEM_IDENTIFIER_TYPES)[number];
+
+export interface ImportItemIdentifier {
+  type: ItemIdentifierType;
+  value: string;
+  isPrimary: boolean;
+}
+
 export interface ImportItem {
   name: string;
   category: ItemCategory;
@@ -28,12 +48,13 @@ export interface ImportItem {
   parLevel: number | null;
   reorderPoint: number | null;
   isWatched: boolean;
+  identifiers: ImportItemIdentifier[];
 }
 
 /** Header row for the downloadable item import template. */
 export const ITEM_CSV_TEMPLATE =
-  "name,category,criticality,sku,unit_of_measure,par_level,reorder_point,watch\n" +
-  "Sodium Chloride 0.9% IV 1000mL,iv_fluid,life_critical,IV-NS-1000,bag,500,200,yes\n";
+  "name,category,criticality,sku,ndc,gtin,unit_of_measure,par_level,reorder_point,watch\n" +
+  "Sodium Chloride 0.9% IV 1000mL,iv_fluid,life_critical,IV-NS-1000,0409-7983-09,00304097983091,bag,500,200,yes\n";
 
 export function validateItemRows(rows: CsvRecord[]): ValidationResult<ImportItem> {
   const valid: ImportItem[] = [];
@@ -109,8 +130,43 @@ export function validateItemRows(rows: CsvRecord[]): ValidationResult<ImportItem
       parLevel: par.value,
       reorderPoint: reorder.value,
       isWatched: parseBoolean(pickField(row, ["watch", "watched", "watchlist"]), true),
+      identifiers: collectIdentifiers(row, internalSku),
     });
   });
 
   return { valid, errors };
+}
+
+function collectIdentifiers(
+  row: CsvRecord,
+  internalSku: string | null,
+): ImportItemIdentifier[] {
+  const values: ImportItemIdentifier[] = [];
+  addIdentifier(values, "ndc", pickField(row, ["ndc", "package_ndc", "product_ndc"]), true);
+  addIdentifier(values, "gtin", pickField(row, ["gtin", "udi", "udi_di"]), false);
+  addIdentifier(values, "upc", pickField(row, ["upc"]), false);
+  addIdentifier(values, "hibcc", pickField(row, ["hibcc"]), false);
+  addIdentifier(values, "mpn", pickField(row, ["mpn", "manufacturer_part_number"]), false);
+  addIdentifier(values, "fda_app_no", pickField(row, ["fda_app_no", "application_number"]), false);
+  addIdentifier(values, "rxcui", pickField(row, ["rxcui", "rxnorm"]), false);
+  addIdentifier(values, "other", pickField(row, ["identifier", "external_identifier"]), false);
+  addIdentifier(values, "sku", internalSku ?? undefined, false);
+
+  const seen = new Set<string>();
+  return values.filter((identifier) => {
+    const key = `${identifier.type}:${identifier.value.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function addIdentifier(
+  identifiers: ImportItemIdentifier[],
+  type: ItemIdentifierType,
+  value: string | undefined,
+  isPrimary: boolean,
+) {
+  if (!value) return;
+  identifiers.push({ type, value, isPrimary });
 }

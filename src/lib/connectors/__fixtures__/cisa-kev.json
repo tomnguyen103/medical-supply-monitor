@@ -1,0 +1,11 @@
+{
+  "cveID": "CVE-2025-12345",
+  "vendorProject": "Microsoft",
+  "product": "Windows",
+  "vulnerabilityName": "Microsoft Windows test vulnerability",
+  "dateAdded": "2026-06-25",
+  "shortDescription": "A test vulnerability used for normalization.",
+  "requiredAction": "Apply mitigations per vendor instructions.",
+  "dueDate": "2026-07-16",
+  "knownRansomwareCampaignUse": "Known"
+}
