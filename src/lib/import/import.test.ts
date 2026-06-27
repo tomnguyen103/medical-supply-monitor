@@ -47,6 +47,7 @@ describe("validateItemRows", () => {
       parLevel: 500,
       reorderPoint: 200,
       isWatched: true,
+      identifiers: [{ type: "sku", value: "ns1000", isPrimary: false }],
     });
   });
 
@@ -58,6 +59,7 @@ describe("validateItemRows", () => {
       isWatched: true,
       internalSku: null,
       parLevel: null,
+      identifiers: [],
     });
   });
 
@@ -70,7 +72,25 @@ describe("validateItemRows", () => {
       name: "Propofol",
       unitOfMeasure: "vial",
       isWatched: false,
+      identifiers: [],
     });
+  });
+
+  it("collects NDC, GTIN, and SKU identifiers from item rows", () => {
+    const { valid, errors } = validateItemRows([
+      {
+        name: "Furosemide Injection",
+        sku: "RX-FUR-001",
+        ndc: "0409-6102-26",
+        gtin: "00304096102266",
+      },
+    ]);
+    expect(errors).toEqual([]);
+    expect(valid[0]?.identifiers).toEqual([
+      { type: "ndc", value: "0409610226", isPrimary: true },
+      { type: "gtin", value: "00304096102266", isPrimary: false },
+      { type: "sku", value: "rxfur001", isPrimary: false },
+    ]);
   });
 
   it("reports a row error for a missing name (with the spreadsheet line)", () => {

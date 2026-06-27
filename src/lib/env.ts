@@ -86,6 +86,7 @@ export const integrations = {
   ai: present(env.ai.anthropicApiKey) || present(env.ai.openaiApiKey),
   resend: present(env.notifications.resendApiKey),
   slack: present(env.notifications.slackWebhookUrl),
+  nasaFirms: present(env.connectors.nasaFirmsMapKey),
   worldMonitor:
     present(env.connectors.worldMonitorBaseUrl) &&
     present(env.connectors.worldMonitorApiKey),

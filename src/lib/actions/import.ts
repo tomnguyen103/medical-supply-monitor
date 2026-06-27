@@ -1,9 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db, isDatabaseConfigured } from "@/lib/db";
-import { items, suppliers, facilities } from "@/lib/db/schema";
+import { items, itemIdentifiers, suppliers, facilities } from "@/lib/db/schema";
 import { getOrgContext } from "@/lib/auth/tenancy";
 import {
   parseCsv,
@@ -65,12 +67,87 @@ export async function importItemsAction(
   if (valid.length === 0) return failure("No valid rows found in the file.", errors);
 
   try {
-    const inserted = await db
-      .insert(items)
-      .values(valid.map((v) => ({ organizationId: gate.orgId, ...v })))
-      .onConflictDoNothing()
-      .returning({ id: items.id });
+    const skus = [
+      ...new Set(
+        valid
+          .map((row) => row.internalSku)
+          .filter((sku): sku is string => Boolean(sku)),
+      ),
+    ];
+    const existingItems =
+      skus.length > 0
+        ? await db
+            .select({ id: items.id, internalSku: items.internalSku })
+            .from(items)
+            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+        : [];
+    const existingBySku = new Map(
+      existingItems
+        .filter((row) => row.internalSku)
+        .map((row) => [row.internalSku!, row.id]),
+    );
+
+    const itemRows = valid.map((v) => {
+      const { identifiers, ...item } = v;
+      const existingId = v.internalSku ? existingBySku.get(v.internalSku) : undefined;
+      return {
+        id: existingId ?? randomUUID(),
+        wasExisting: Boolean(existingId),
+        identifiers,
+        item: { organizationId: gate.orgId, ...item },
+      };
+    });
+    const newItemRows = itemRows.filter((row) => !row.wasExisting);
+
+    let inserted: Array<{ id: string }> = [];
+    if (newItemRows.length > 0) {
+      const insertedRows = await db
+        .insert(items)
+        .values(newItemRows.map((row) => ({ id: row.id, ...row.item })))
+        .onConflictDoNothing()
+        .returning({ id: items.id });
+      inserted = insertedRows;
+    }
+
+    const refreshedItems =
+      skus.length > 0
+        ? await db
+            .select({ id: items.id, internalSku: items.internalSku })
+            .from(items)
+            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+        : [];
+    const resolvedBySku = new Map(
+      refreshedItems
+        .filter((row) => row.internalSku)
+        .map((row) => [row.internalSku!, row.id]),
+    );
+    const insertedIds = new Set(inserted.map((row) => row.id));
+    const identifierRows = itemRows.flatMap((row) => {
+      const resolvedItemId =
+        row.item.internalSku != null
+          ? resolvedBySku.get(row.item.internalSku)
+          : insertedIds.has(row.id)
+            ? row.id
+            : undefined;
+      if (!resolvedItemId) return [];
+      return row.identifiers.map((identifier) => ({
+        organizationId: gate.orgId,
+        itemId: resolvedItemId,
+        type: identifier.type,
+        value: identifier.value,
+        isPrimary: identifier.isPrimary,
+      }));
+    });
+
+    if (identifierRows.length > 0) {
+      await db
+        .insert(itemIdentifiers)
+        .values(identifierRows)
+        .onConflictDoNothing();
+    }
+
     revalidatePath("/dashboard/items");
+    revalidatePath("/dashboard/signals");
     revalidatePath("/dashboard");
     return {
       ok: true,

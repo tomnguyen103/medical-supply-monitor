@@ -1,0 +1,20 @@
+{
+  "update_type": "Revised",
+  "initial_posting_date": "04/07/2020",
+  "package_ndc": "0409-6102-26",
+  "generic_name": "Furosemide Injection",
+  "availability": "Unavailable",
+  "related_info": "Next delivery and estimated recovery: December 2027",
+  "openfda": {
+    "manufacturer_name": ["Hospira, Inc."],
+    "product_ndc": ["0409-6102"],
+    "package_ndc": ["0409-6102-26"],
+    "substance_name": ["FUROSEMIDE"]
+  },
+  "update_date": "06/25/2026",
+  "dosage_form": "Injection",
+  "presentation": "Furosemide, Injection, 40 mg/4 mL (NDC 0409-6102-26)",
+  "company_name": "Hospira, Inc., a Pfizer Company",
+  "shortage_reason": "Manufacturing Delay",
+  "status": "Current"
+}
