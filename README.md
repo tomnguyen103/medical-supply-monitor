@@ -158,5 +158,5 @@ These are enforced in the data model and architecture, not toggles:
 - Run migrations via a controlled release step, not automatically on previews
 - The Inngest endpoint is exposed at `/api/inngest`
 
-See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan and phase breakdown,
-and [`AGENTS.md`](AGENTS.md) for the working agreement.
+See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full plan and phase
+breakdown, and [`AGENTS.md`](AGENTS.md) for the working agreement.
