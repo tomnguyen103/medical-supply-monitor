@@ -17,7 +17,7 @@ export default async function SignalsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Risk signals"
-        description="Tenant-matched shortage, recall, weather, cyber, and supplier risk signals with evidence."
+        description="Tenant-matched signals with deterministic scores, freshness, and evidence."
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />

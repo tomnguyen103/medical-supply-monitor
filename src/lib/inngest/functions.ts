@@ -1,12 +1,12 @@
 import { runRiskIngestion } from "@/lib/ingestion/pipeline";
+import { runRiskScoring } from "@/lib/risk/snapshots";
 import { inngest } from "./client";
 
 /**
  * Daily risk refresh.
  *
- * Event-triggered for Phase 3. Phase 5 switches this to a schedule and appends
- * scoring, alert evaluation, human approval, and delivery. This phase owns only
- * the connector to normalized RiskSignal ingestion loop.
+ * Event-triggered for Phases 3-4. Phase 5 switches this to a schedule and
+ * appends alert evaluation, human approval, and delivery.
  */
 export const dailyRiskRefresh = inngest.createFunction(
   {
@@ -18,7 +18,10 @@ export const dailyRiskRefresh = inngest.createFunction(
     const ingestion = await step.run("ingest-risk-signals", async () => {
       return runRiskIngestion();
     });
-    return { ok: ingestion.ok, ingestion };
+    const scoring = await step.run("score-risk-snapshots", async () => {
+      return runRiskScoring();
+    });
+    return { ok: ingestion.ok && scoring.ok, ingestion, scoring };
   },
 );
 
