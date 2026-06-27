@@ -1,24 +1,37 @@
-import { Boxes } from "lucide-react";
+import { PageHeader } from "@/components/dashboard/primitives";
+import { CatalogBlocked } from "@/components/dashboard/catalog-blocked";
+import { ImportPanel } from "@/components/dashboard/import-panel";
+import { ItemsTable } from "@/components/dashboard/items-table";
+import { getCatalogContext, listItems } from "@/lib/catalog";
+import { importItemsAction } from "@/lib/actions/import";
+import { ITEM_CSV_TEMPLATE } from "@/lib/import";
 
-import { EmptyState, PageHeader } from "@/components/dashboard/primitives";
-import { Button } from "@/components/ui/button";
-
+// Tenant-scoped, auth + DB backed: always render per-request.
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Items" };
 
-export default function ItemsPage() {
+export default async function ItemsPage() {
+  const ctx = await getCatalogContext();
+
   return (
     <div className="space-y-8">
       <PageHeader
         title="Items"
         description="Your monitored catalog of critical drugs, devices, and supplies."
       />
-      <EmptyState
-        icon={Boxes}
-        title="No items yet"
-        body="Phase 2 adds CSV import for your item master, identifiers, criticality, and watchlists."
-      >
-        <Button disabled>Import CSV (Phase 2)</Button>
-      </EmptyState>
+      {!ctx.ready ? (
+        <CatalogBlocked reason={ctx.reason} />
+      ) : (
+        <>
+          <ImportPanel
+            action={importItemsAction}
+            entityLabel="items"
+            template={ITEM_CSV_TEMPLATE}
+            templateFilename="items-template.csv"
+          />
+          <ItemsTable data={await listItems(ctx.orgId)} />
+        </>
+      )}
     </div>
   );
 }
