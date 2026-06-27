@@ -16,6 +16,22 @@ export interface OrgContext {
   orgSlug: string | null;
 }
 
+export type OrgPermission =
+  | "view"
+  | "manage_catalog"
+  | "manage_alerts"
+  | "run_operations"
+  | "manage_settings";
+
+const ADMIN_ROLES = new Set(["admin", "owner", "org:admin", "org:owner"]);
+const OPERATOR_ROLES = new Set([
+  ...ADMIN_ROLES,
+  "member",
+  "org:member",
+  "operator",
+  "org:operator",
+]);
+
 /**
  * Active org context, or null when: Clerk is unconfigured, the user is signed
  * out, or no organization is selected. Never throws on the unconfigured path,
@@ -40,4 +56,29 @@ export async function requireOrgContext(): Promise<OrgContext> {
     );
   }
   return ctx;
+}
+
+export function hasOrgPermission(
+  ctx: Pick<OrgContext, "orgRole">,
+  permission: OrgPermission,
+): boolean {
+  if (permission === "view") return true;
+  const role = normalizeOrgRole(ctx.orgRole);
+  if (!role) return false;
+  if (permission === "manage_settings") return ADMIN_ROLES.has(role);
+  return OPERATOR_ROLES.has(role);
+}
+
+export function requireOrgPermission(
+  ctx: OrgContext,
+  permission: OrgPermission,
+): void {
+  if (!hasOrgPermission(ctx, permission)) {
+    throw new Error(`Organization role ${ctx.orgRole ?? "unknown"} cannot ${permission}.`);
+  }
+}
+
+function normalizeOrgRole(role: string | null): string | null {
+  if (!role) return null;
+  return role.trim().toLowerCase();
 }

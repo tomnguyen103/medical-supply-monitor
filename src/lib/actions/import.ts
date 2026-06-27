@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 
+import { writeAuditLog } from "@/lib/audit";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import { items, itemIdentifiers, suppliers, facilities } from "@/lib/db/schema";
-import { getOrgContext } from "@/lib/auth/tenancy";
+import { getOrgContext, hasOrgPermission, type OrgContext } from "@/lib/auth/tenancy";
 import {
   parseCsv,
   validateItemRows,
@@ -14,6 +15,7 @@ import {
   validateFacilityRows,
   type RowError,
 } from "@/lib/import";
+import { enforceActionRateLimit } from "@/lib/security/rate-limit";
 
 export interface ImportOutcome {
   ok: boolean;
@@ -43,7 +45,7 @@ async function readCsv(
 }
 
 /** Shared guards: returns the orgId or an outcome to short-circuit on. */
-async function ready(): Promise<{ orgId: string } | { outcome: ImportOutcome }> {
+async function ready(action: string): Promise<{ ctx: OrgContext } | { outcome: ImportOutcome }> {
   if (!isDatabaseConfigured) {
     return { outcome: failure("Database is not configured. Set DATABASE_URL to enable imports.") };
   }
@@ -51,14 +53,21 @@ async function ready(): Promise<{ orgId: string } | { outcome: ImportOutcome }> 
   if (!ctx) {
     return { outcome: failure("Sign in and select an organization before importing.") };
   }
-  return { orgId: ctx.orgId };
+  if (!hasOrgPermission(ctx, "manage_catalog")) {
+    return { outcome: failure("Your organization role cannot import catalog data.") };
+  }
+  const rateLimit = await enforceActionRateLimit(ctx, action);
+  if (!rateLimit.ok) {
+    return { outcome: failure(rateLimit.error ?? "Too many requests.") };
+  }
+  return { ctx };
 }
 
 export async function importItemsAction(
   _prev: ImportOutcome | null,
   formData: FormData,
 ): Promise<ImportOutcome> {
-  const gate = await ready();
+  const gate = await ready("import_items");
   if ("outcome" in gate) return gate.outcome;
   const read = await readCsv(formData);
   if ("error" in read) return failure(read.error);
@@ -79,7 +88,7 @@ export async function importItemsAction(
         ? await db
             .select({ id: items.id, internalSku: items.internalSku })
             .from(items)
-            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+            .where(and(eq(items.organizationId, gate.ctx.orgId), inArray(items.internalSku, skus)))
         : [];
     const existingBySku = new Map(
       existingItems
@@ -94,7 +103,7 @@ export async function importItemsAction(
         id: existingId ?? randomUUID(),
         wasExisting: Boolean(existingId),
         identifiers,
-        item: { organizationId: gate.orgId, ...item },
+        item: { organizationId: gate.ctx.orgId, ...item },
       };
     });
     const newItemRows = itemRows.filter((row) => !row.wasExisting);
@@ -114,7 +123,7 @@ export async function importItemsAction(
         ? await db
             .select({ id: items.id, internalSku: items.internalSku })
             .from(items)
-            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+            .where(and(eq(items.organizationId, gate.ctx.orgId), inArray(items.internalSku, skus)))
         : [];
     const resolvedBySku = new Map(
       refreshedItems
@@ -131,7 +140,7 @@ export async function importItemsAction(
             : undefined;
       if (!resolvedItemId) return [];
       return row.identifiers.map((identifier) => ({
-        organizationId: gate.orgId,
+        organizationId: gate.ctx.orgId,
         itemId: resolvedItemId,
         type: identifier.type,
         value: identifier.value,
@@ -149,6 +158,19 @@ export async function importItemsAction(
     revalidatePath("/dashboard/items");
     revalidatePath("/dashboard/signals");
     revalidatePath("/dashboard");
+    await writeAuditLog({
+      organizationId: gate.ctx.orgId,
+      actorType: "user",
+      actorId: gate.ctx.userId,
+      action: "catalog.items.import",
+      subjectType: "items",
+      summary: `Imported ${inserted.length} item(s).`,
+      metadata: {
+        inserted: inserted.length,
+        skipped: valid.length - inserted.length,
+        errors: errors.length,
+      },
+    });
     return {
       ok: true,
       message: `Imported ${inserted.length} item(s).`,
@@ -165,7 +187,7 @@ export async function importSuppliersAction(
   _prev: ImportOutcome | null,
   formData: FormData,
 ): Promise<ImportOutcome> {
-  const gate = await ready();
+  const gate = await ready("import_suppliers");
   if ("outcome" in gate) return gate.outcome;
   const read = await readCsv(formData);
   if ("error" in read) return failure(read.error);
@@ -176,11 +198,24 @@ export async function importSuppliersAction(
   try {
     const inserted = await db
       .insert(suppliers)
-      .values(valid.map((v) => ({ organizationId: gate.orgId, ...v })))
+      .values(valid.map((v) => ({ organizationId: gate.ctx.orgId, ...v })))
       .onConflictDoNothing()
       .returning({ id: suppliers.id });
     revalidatePath("/dashboard/suppliers");
     revalidatePath("/dashboard");
+    await writeAuditLog({
+      organizationId: gate.ctx.orgId,
+      actorType: "user",
+      actorId: gate.ctx.userId,
+      action: "catalog.suppliers.import",
+      subjectType: "suppliers",
+      summary: `Imported ${inserted.length} supplier(s).`,
+      metadata: {
+        inserted: inserted.length,
+        skipped: valid.length - inserted.length,
+        errors: errors.length,
+      },
+    });
     return {
       ok: true,
       message: `Imported ${inserted.length} supplier(s).`,
@@ -197,7 +232,7 @@ export async function importFacilitiesAction(
   _prev: ImportOutcome | null,
   formData: FormData,
 ): Promise<ImportOutcome> {
-  const gate = await ready();
+  const gate = await ready("import_facilities");
   if ("outcome" in gate) return gate.outcome;
   const read = await readCsv(formData);
   if ("error" in read) return failure(read.error);
@@ -208,11 +243,24 @@ export async function importFacilitiesAction(
   try {
     const inserted = await db
       .insert(facilities)
-      .values(valid.map((v) => ({ organizationId: gate.orgId, ...v })))
+      .values(valid.map((v) => ({ organizationId: gate.ctx.orgId, ...v })))
       .onConflictDoNothing()
       .returning({ id: facilities.id });
     revalidatePath("/dashboard/facilities");
     revalidatePath("/dashboard");
+    await writeAuditLog({
+      organizationId: gate.ctx.orgId,
+      actorType: "user",
+      actorId: gate.ctx.userId,
+      action: "catalog.facilities.import",
+      subjectType: "facilities",
+      summary: `Imported ${inserted.length} facilit${inserted.length === 1 ? "y" : "ies"}.`,
+      metadata: {
+        inserted: inserted.length,
+        skipped: valid.length - inserted.length,
+        errors: errors.length,
+      },
+    });
     return {
       ok: true,
       message: `Imported ${inserted.length} facilit${inserted.length === 1 ? "y" : "ies"}.`,

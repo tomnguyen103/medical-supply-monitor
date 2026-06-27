@@ -1,6 +1,6 @@
 # Critical Medical Supply Resilience Monitor
 
-![Status](https://img.shields.io/badge/status-Phase_6_AI_workflow-0f766e)
+![Status](https://img.shields.io/badge/status-Phase_7_hardened_MVP-0f766e)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -26,11 +26,11 @@ final writes, or critical alert delivery. See [Product guardrails](#product-guar
 
 ---
 
-## Status: Phase 6 (AI workflow)
+## Status: Phase 7 (Hardened MVP)
 
 This repository currently contains the Phase 1 foundation, Phase 2 catalog/import
 workflow, Phase 3 ingestion loop, Phase 4 scoring loop, Phase 5 alert/brief
-loop, and Phase 6 guarded AI workflow:
+loop, Phase 6 guarded AI workflow, and Phase 7 production hardening:
 
 - Next.js 16 / React 19 / TypeScript app, Vercel-ready
 - Clerk Organizations wiring (auth + tenancy), conditional and graceful
@@ -56,12 +56,16 @@ loop, and Phase 6 guarded AI workflow:
   with a code-owned deterministic scorer node, compliance guard, critical
   human-approval gate, LangSmith-safe traces, and tenant-scoped `agent_runs`
   audit records
+- Clerk organization role checks on mutating actions, Upstash-backed action
+  rate limits, `audit_log` writes, scheduled retention cleanup, tenant-isolation
+  tests, and a non-PHI buyer-ready demo workspace seed
 - Protected dashboard shell + landing and auth surfaces
 
 Every integration **boots gracefully without credentials** ("not configured"
 state), so you can run the app immediately and switch features on by adding env
-vars. Later hardening remains scaffolded or intentionally limited until
-implemented.
+vars. With Clerk and Neon configured, seed the demo workspace from the overview
+to exercise the MVP loop: upload/catalog data, matched risk, score, brief, alert,
+evidence, and approval gates.
 
 ---
 

@@ -1,6 +1,7 @@
 import { runDailyBriefWorkflows } from "@/lib/ai/graph";
 import { runAlertEvaluation } from "@/lib/alerts/engine";
 import { runRiskIngestion } from "@/lib/ingestion/pipeline";
+import { runRetentionCleanup } from "@/lib/retention";
 import { runRiskScoring } from "@/lib/risk/snapshots";
 import { inngest } from "./client";
 
@@ -68,5 +69,27 @@ export const dailyRiskRefresh = inngest.createFunction(
   },
 );
 
+export const retentionCleanup = inngest.createFunction(
+  {
+    id: "retention-cleanup",
+    name: "Retention Cleanup",
+    triggers: [{ cron: "30 3 * * *" }],
+  },
+  async ({ step }) => {
+    const retention = await step.run("cleanup-retained-data", async () => {
+      return runRetentionCleanup({ apply: true });
+    });
+    if (!retention.ok) {
+      throw new Error(
+        [
+          "Retention cleanup failed.",
+          `retention_skipped=${retention.skipped ?? "none"}`,
+        ].join(" "),
+      );
+    }
+    return retention;
+  },
+);
+
 /** All Inngest functions served at /api/inngest. */
-export const functions = [dailyRiskRefresh];
+export const functions = [dailyRiskRefresh, retentionCleanup];
