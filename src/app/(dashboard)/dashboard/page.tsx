@@ -1,0 +1,78 @@
+import { TriangleAlert } from "lucide-react";
+
+import { PageHeader, StatTile } from "@/components/dashboard/primitives";
+import { SetupChecklist } from "@/components/dashboard/setup-checklist";
+import { integrations } from "@/lib/env";
+import { SCORING_VERSION } from "@/lib/risk/scoring";
+import { DAILY_BRIEF_GRAPH } from "@/lib/ai/graph";
+
+export const metadata = { title: "Overview" };
+
+const NEXT_STEPS = [
+  { phase: "Phase 2", text: "CSV import, item catalog, suppliers, facilities, watchlists" },
+  { phase: "Phase 3", text: "Connector framework and openFDA shortage / recall ingestion" },
+  { phase: "Phase 4", text: "Risk snapshots, scoring versions, evidence drawer, daily diff" },
+  { phase: "Phase 5", text: "Alert rules, cooldowns, Slack / email delivery, daily brief" },
+];
+
+export default function OverviewPage() {
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        title="Overview"
+        description="Foundation is live. Configure integrations and import a catalog to begin monitoring."
+      />
+
+      {!integrations.database && (
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4">
+          <TriangleAlert
+            className="mt-0.5 size-5 shrink-0 text-muted-foreground"
+            strokeWidth={1.75}
+          />
+          <div className="text-sm">
+            <p className="font-medium">No database connected yet</p>
+            <p className="mt-0.5 text-muted-foreground">
+              Set <code className="font-mono">DATABASE_URL</code> in{" "}
+              <code className="font-mono">.env.local</code>, then run{" "}
+              <code className="font-mono">npm run db:migrate</code>. The shell
+              renders without it so you can explore the structure.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Monitored items" value="0" hint="Import a catalog to begin" />
+        <StatTile label="Active risk signals" value="0" hint="Connectors arrive in Phase 3" />
+        <StatTile label="Critical alerts" value="0" hint="Alert delivery arrives in Phase 5" />
+        <StatTile
+          label="Scoring version"
+          value={SCORING_VERSION}
+          hint={`${DAILY_BRIEF_GRAPH.nodes.length}-node AI workflow`}
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SetupChecklist />
+        <div className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="font-medium">What comes next</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Phase 1 ships the foundation. Capabilities land in order.
+            </p>
+          </div>
+          <ul className="divide-y divide-border">
+            {NEXT_STEPS.map((step) => (
+              <li key={step.phase} className="flex items-start gap-3 px-5 py-3">
+                <span className="mt-0.5 font-mono text-xs text-primary">
+                  {step.phase}
+                </span>
+                <span className="text-sm text-muted-foreground">{step.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
