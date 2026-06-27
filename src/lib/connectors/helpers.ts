@@ -67,6 +67,14 @@ export function parseDate(value: unknown): Date | undefined {
     );
   }
 
+  const compactUtc = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/u.exec(raw);
+  if (compactUtc) {
+    const [, year, month, day, hour, minute, second] = compactUtc;
+    if (year && month && day && hour && minute && second) {
+      return safeDate(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
+    }
+  }
+
   return safeDate(raw);
 }
 
@@ -147,7 +155,7 @@ export async function fetchJson<T>(
     },
   });
   if (!res.ok) {
-    throw new Error(`Fetch failed (${res.status}) for ${url}`);
+    throw new Error(`Fetch failed (${res.status}) for ${safeRequestLabel(url)}`);
   }
   return (await res.json()) as T;
 }
@@ -165,7 +173,15 @@ export async function fetchText(
     },
   });
   if (!res.ok) {
-    throw new Error(`Fetch failed (${res.status}) for ${url}`);
+    throw new Error(`Fetch failed (${res.status}) for ${safeRequestLabel(url)}`);
   }
   return res.text();
+}
+
+function safeRequestLabel(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "external feed";
+  }
 }

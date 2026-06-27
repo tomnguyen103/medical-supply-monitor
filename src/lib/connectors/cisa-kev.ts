@@ -57,12 +57,17 @@ export function normalizeCisaKev(
   const vulnerability = asString(record.vulnerabilityName);
   const mitigation = asString(record.requiredAction);
   const severityScore = ransomware?.toLowerCase() === "known" ? 82 : 68;
+  const supplierId = vendor
+    ? stableKey(vendor, product)
+    : product
+      ? stableKey(product)
+      : null;
 
   return {
     source: cisaKevConnector.id,
     domain: "cyber",
     entityType: "supplier",
-    entityId: cve ?? stableKey(vendor, product),
+    entityId: supplierId,
     title: `${vendor ?? "Supplier"} ${product ?? "product"} exploited vulnerability`,
     summary: truncate([cve, vulnerability, mitigation].filter(Boolean).join(". ")),
     severity: severityScore >= 80 ? "high" : "moderate",

@@ -57,8 +57,10 @@ export function extractFdaDeviceShortageRows(html: string): FdaDeviceShortageRow
       if (!/shortage|discontinuance|availability|product code/iu.test(combined)) {
         return null;
       }
-      const device = cells.find((cell) => cell.length > 4 && !/product code/iu.test(cell));
-      if (!device || /device|product code|reason|status/iu.test(device)) return null;
+      const device = cells.find(
+        (cell) => cell.length > 4 && !/^(product code|reason|status)$/iu.test(cell),
+      );
+      if (!device || /^device$/iu.test(device)) return null;
       const productCodes = [
         ...combined.matchAll(/\b[A-Z]{3}\b/gu),
       ].map((match) => match[0]);

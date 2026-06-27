@@ -51,15 +51,36 @@ interface OpenFdaEnforcementResponse {
 export async function fetchOpenFdaRecalls(
   ctx: ConnectorContext,
 ): Promise<NormalizedRiskSignal[]> {
-  const [drug, device] = await Promise.all([
-    fetchJson<OpenFdaEnforcementResponse>(DRUG_RECALLS_URL, ctx),
-    fetchJson<OpenFdaEnforcementResponse>(DEVICE_RECALLS_URL, ctx),
-  ]);
   const now = new Date();
-  return [
-    ...(drug.results ?? []).map((row) => normalizeOpenFdaRecall(row, "drug", now)),
-    ...(device.results ?? []).map((row) => normalizeOpenFdaRecall(row, "device", now)),
-  ].filter((signal): signal is NormalizedRiskSignal => signal != null);
+  const signals: NormalizedRiskSignal[] = [];
+  const errors: Error[] = [];
+
+  try {
+    const drug = await fetchJson<OpenFdaEnforcementResponse>(DRUG_RECALLS_URL, ctx);
+    signals.push(
+      ...(drug.results ?? [])
+        .map((row) => normalizeOpenFdaRecall(row, "drug", now))
+        .filter((signal): signal is NormalizedRiskSignal => signal != null),
+    );
+  } catch (error) {
+    errors.push(error instanceof Error ? error : new Error("Drug recalls failed."));
+  }
+
+  try {
+    const device = await fetchJson<OpenFdaEnforcementResponse>(DEVICE_RECALLS_URL, ctx);
+    signals.push(
+      ...(device.results ?? [])
+        .map((row) => normalizeOpenFdaRecall(row, "device", now))
+        .filter((signal): signal is NormalizedRiskSignal => signal != null),
+    );
+  } catch (error) {
+    errors.push(error instanceof Error ? error : new Error("Device recalls failed."));
+  }
+
+  if (signals.length === 0 && errors.length > 0) {
+    throw new Error(errors.map((error) => error.message).join("; "));
+  }
+  return signals;
 }
 
 export function normalizeOpenFdaRecall(

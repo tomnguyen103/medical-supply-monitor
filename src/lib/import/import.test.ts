@@ -47,7 +47,7 @@ describe("validateItemRows", () => {
       parLevel: 500,
       reorderPoint: 200,
       isWatched: true,
-      identifiers: [{ type: "sku", value: "NS-1000", isPrimary: false }],
+      identifiers: [{ type: "sku", value: "ns1000", isPrimary: false }],
     });
   });
 
@@ -87,9 +87,9 @@ describe("validateItemRows", () => {
     ]);
     expect(errors).toEqual([]);
     expect(valid[0]?.identifiers).toEqual([
-      { type: "ndc", value: "0409-6102-26", isPrimary: true },
+      { type: "ndc", value: "0409610226", isPrimary: true },
       { type: "gtin", value: "00304096102266", isPrimary: false },
-      { type: "sku", value: "RX-FUR-001", isPrimary: false },
+      { type: "sku", value: "rxfur001", isPrimary: false },
     ]);
   });
 

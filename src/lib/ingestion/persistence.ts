@@ -117,6 +117,20 @@ async function persistEvidence(
     summary: signal.summary,
     evidenceUrl: signal.evidenceUrl,
   };
+  const contentHash = hashPayload(payload);
+  const [existing] = await db
+    .select({ id: evidenceArtifacts.id })
+    .from(evidenceArtifacts)
+    .where(
+      and(
+        eq(evidenceArtifacts.organizationId, organizationId),
+        eq(evidenceArtifacts.signalId, signalId),
+        eq(evidenceArtifacts.contentHash, contentHash),
+      ),
+    )
+    .limit(1);
+  if (existing) return existing.id;
+
   const [row] = await db
     .insert(evidenceArtifacts)
     .values({
@@ -127,7 +141,7 @@ async function persistEvidence(
       url: signal.evidenceUrl,
       sourceName: signal.source,
       capturedAt: signal.lastFetchedAt,
-      contentHash: hashPayload(payload),
+      contentHash,
       payload,
     })
     .returning({ id: evidenceArtifacts.id });

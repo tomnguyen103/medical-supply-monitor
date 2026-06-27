@@ -82,7 +82,7 @@ export function normalizeOfacSdnXml(
           country,
           programs,
         },
-        dedupeKey: stableKey(uid ?? name, publicationDate?.toISOString().slice(0, 10)),
+        dedupeKey: stableKey(uid ?? name),
         matchHints: {
           supplierName: name,
           countryCode: country,

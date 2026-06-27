@@ -62,10 +62,10 @@ describe("matchSignalToCatalog", () => {
       catalog,
     );
     expect(match).toMatchObject({
-      itemId: "item_1",
       supplierId: "supplier_1",
       reason: "supplier",
     });
+    expect(match?.itemId).toBeUndefined();
   });
 
   it("matches supplier country exposure", () => {
@@ -78,6 +78,7 @@ describe("matchSignalToCatalog", () => {
       reason: "country",
       matchedValue: "DE",
     });
+    expect(match?.itemId).toBeUndefined();
   });
 
   it("falls back to item keywords", () => {

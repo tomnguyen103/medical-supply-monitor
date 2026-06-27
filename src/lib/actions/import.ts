@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db, isDatabaseConfigured } from "@/lib/db";
 import { items, itemIdentifiers, suppliers, facilities } from "@/lib/db/schema";
@@ -66,23 +67,40 @@ export async function importItemsAction(
   if (valid.length === 0) return failure("No valid rows found in the file.", errors);
 
   try {
+    const skus = [
+      ...new Set(
+        valid
+          .map((row) => row.internalSku)
+          .filter((sku): sku is string => Boolean(sku)),
+      ),
+    ];
+    const existingItems =
+      skus.length > 0
+        ? await db
+            .select({ id: items.id, internalSku: items.internalSku })
+            .from(items)
+            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+        : [];
+    const existingBySku = new Map(
+      existingItems
+        .filter((row) => row.internalSku)
+        .map((row) => [row.internalSku!.toLowerCase(), row.id]),
+    );
+
     const itemRows = valid.map((v) => {
       const { identifiers, ...item } = v;
+      const existingId = v.internalSku
+        ? existingBySku.get(v.internalSku.toLowerCase())
+        : undefined;
       return {
-        id: randomUUID(),
+        id: existingId ?? randomUUID(),
+        wasExisting: Boolean(existingId),
         identifiers,
         item: { organizationId: gate.orgId, ...item },
       };
     });
-    const inserted = await db
-      .insert(items)
-      .values(itemRows.map((row) => ({ id: row.id, ...row.item })))
-      .onConflictDoNothing()
-      .returning({ id: items.id });
-
-    const insertedIds = new Set(inserted.map((row) => row.id));
+    const newItemRows = itemRows.filter((row) => !row.wasExisting);
     const identifierRows = itemRows
-      .filter((row) => insertedIds.has(row.id))
       .flatMap((row) =>
         row.identifiers.map((identifier) => ({
           organizationId: gate.orgId,
@@ -93,7 +111,29 @@ export async function importItemsAction(
         })),
       );
 
-    if (identifierRows.length > 0) {
+    let insertedCount = 0;
+    if (newItemRows.length > 0 && identifierRows.length > 0) {
+      const [inserted] = await db.batch([
+        db
+          .insert(items)
+          .values(newItemRows.map((row) => ({ id: row.id, ...row.item })))
+          .onConflictDoNothing()
+          .returning({ id: items.id }),
+        db
+          .insert(itemIdentifiers)
+          .values(identifierRows)
+          .onConflictDoNothing()
+          .returning({ id: itemIdentifiers.id }),
+      ]);
+      insertedCount = inserted.length;
+    } else if (newItemRows.length > 0) {
+      const inserted = await db
+        .insert(items)
+        .values(newItemRows.map((row) => ({ id: row.id, ...row.item })))
+        .onConflictDoNothing()
+        .returning({ id: items.id });
+      insertedCount = inserted.length;
+    } else if (identifierRows.length > 0) {
       await db
         .insert(itemIdentifiers)
         .values(identifierRows)
@@ -105,9 +145,9 @@ export async function importItemsAction(
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: `Imported ${inserted.length} item(s).`,
-      inserted: inserted.length,
-      skipped: valid.length - inserted.length,
+      message: `Imported ${insertedCount} item(s).`,
+      inserted: insertedCount,
+      skipped: valid.length - insertedCount,
       errors,
     };
   } catch (e) {

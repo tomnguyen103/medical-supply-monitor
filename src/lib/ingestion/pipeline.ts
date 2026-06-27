@@ -30,6 +30,7 @@ export interface IngestionConnectorSummary {
   fetched: number;
   matched: number;
   persisted: number;
+  failed: number;
   error?: string;
 }
 
@@ -40,6 +41,7 @@ export interface IngestionRunSummary {
   fetched: number;
   matched: number;
   persisted: number;
+  failed: number;
   connectors: IngestionConnectorSummary[];
 }
 
@@ -70,6 +72,7 @@ export async function runRiskIngestion(
         fetched: signals.length,
         matched: result.matched,
         persisted: result.persisted,
+        failed: result.failed,
       });
     } catch (error) {
       summaries.push({
@@ -77,17 +80,19 @@ export async function runRiskIngestion(
         fetched: 0,
         matched: 0,
         persisted: 0,
+        failed: 0,
         error: error instanceof Error ? error.message : "Connector failed.",
       });
     }
   }
 
   return {
-    ok: summaries.every((summary) => !summary.error),
+    ok: summaries.every((summary) => !summary.error && summary.failed === 0),
     tenants: catalogs.length,
     fetched: summaries.reduce((sum, row) => sum + row.fetched, 0),
     matched: summaries.reduce((sum, row) => sum + row.matched, 0),
     persisted: summaries.reduce((sum, row) => sum + row.persisted, 0),
+    failed: summaries.reduce((sum, row) => sum + row.failed, 0),
     connectors: summaries,
   };
 }
@@ -102,21 +107,26 @@ function selectConnectors(connectorIds: string[] | undefined) {
 async function persistSignalsForTenants(
   signals: NormalizedRiskSignal[],
   catalogs: TenantCatalog[],
-): Promise<{ matched: number; persisted: number }> {
+): Promise<{ matched: number; persisted: number; failed: number }> {
   let matched = 0;
   let persisted = 0;
+  let failed = 0;
 
   for (const catalog of catalogs) {
     for (const signal of signals) {
       const match = matchSignalToCatalog(signal, catalog);
       if (!match) continue;
       matched += 1;
-      await upsertMatchedSignal(signal, match);
-      persisted += 1;
+      try {
+        await upsertMatchedSignal(signal, match);
+        persisted += 1;
+      } catch {
+        failed += 1;
+      }
     }
   }
 
-  return { matched, persisted };
+  return { matched, persisted, failed };
 }
 
 async function loadTenantCatalogs(): Promise<TenantCatalog[]> {
@@ -178,6 +188,7 @@ function emptySummary(
     fetched: 0,
     matched: 0,
     persisted: 0,
+    failed: 0,
     connectors: [],
   };
 }

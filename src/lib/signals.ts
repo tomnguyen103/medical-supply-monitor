@@ -1,6 +1,6 @@
 import "server-only";
 
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { items, riskSignals, suppliers } from "@/lib/db/schema";
@@ -48,5 +48,5 @@ export async function listRiskSignals(
     .leftJoin(items, eq(riskSignals.itemId, items.id))
     .leftJoin(suppliers, eq(riskSignals.supplierId, suppliers.id))
     .where(eq(riskSignals.organizationId, organizationId))
-    .orderBy(desc(riskSignals.lastFetchedAt), desc(riskSignals.createdAt));
+    .orderBy(sql`${riskSignals.lastFetchedAt} desc nulls last`, desc(riskSignals.createdAt));
 }

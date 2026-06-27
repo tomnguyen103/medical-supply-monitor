@@ -49,7 +49,7 @@ describe("connector normalization", () => {
       source: "cisa_kev",
       domain: "cyber",
       entityType: "supplier",
-      entityId: "CVE-2025-12345",
+      entityId: "microsoft:windows",
       severity: "high",
       matchHints: {
         supplierName: "Microsoft",

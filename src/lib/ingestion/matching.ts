@@ -94,7 +94,6 @@ export function matchSignalToCatalog(
   if (supplier) {
     return {
       organizationId: catalog.organizationId,
-      itemId: firstItemForSupplier(supplier.id, catalog),
       supplierId: supplier.id,
       reason: "supplier",
       matchedValue: supplier.name,
@@ -109,7 +108,6 @@ export function matchSignalToCatalog(
     if (supplierByCountry) {
       return {
         organizationId: catalog.organizationId,
-        itemId: firstItemForSupplier(supplierByCountry.id, catalog),
         supplierId: supplierByCountry.id,
         reason: "country",
         matchedValue: country,
@@ -181,13 +179,6 @@ function findItemByKeyword(
         (sku.length >= 4 && keyword.includes(sku)),
     );
   });
-}
-
-function firstItemForSupplier(
-  supplierId: string,
-  catalog: TenantCatalog,
-): string | undefined {
-  return catalog.itemSuppliers.find((link) => link.supplierId === supplierId)?.itemId;
 }
 
 export function normalizeCountry(value: string | undefined | null): string | undefined {

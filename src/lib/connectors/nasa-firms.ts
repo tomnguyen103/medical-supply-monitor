@@ -20,7 +20,7 @@ export const nasaFirmsConnector: Connector = {
   domain: "disaster",
   description:
     "NASA FIRMS active fire detections. Optional because it requires a FIRMS map key.",
-  optional: false,
+  optional: true,
   isConfigured() {
     return integrations.nasaFirms;
   },
@@ -52,13 +52,16 @@ export function normalizeNasaFirmsRow(
   const lon = asString(row.longitude);
   const date = asString(row.acq_date);
   if (!lat || !lon || !date) return null;
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   const acquisition = parseDate(
     `${date}T${formatFirmsTime(asString(row.acq_time)) ?? "00:00"}:00Z`,
   );
   const confidence = parseFirmsConfidence(row.confidence);
   const frp = asNumber(Number(row.frp));
   const score = Math.min(95, 35 + confidence * 40 + Math.min(frp ?? 0, 80) * 0.25);
-  const region = `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
+  const region = `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
 
   return {
     source: nasaFirmsConnector.id,

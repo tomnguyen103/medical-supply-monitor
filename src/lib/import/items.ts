@@ -1,4 +1,5 @@
 import { pickField, type CsvRecord } from "./csv";
+import { normalizeIdentifier } from "@/lib/connectors/helpers";
 import { normalizeEnum, parseBoolean, parseInteger } from "./coerce";
 import type { RowError, ValidationResult } from "./types";
 
@@ -167,6 +168,18 @@ function addIdentifier(
   value: string | undefined,
   isPrimary: boolean,
 ) {
-  if (!value) return;
-  identifiers.push({ type, value, isPrimary });
+  const canonical = canonicalizeIdentifier(type, value);
+  if (!canonical) return;
+  identifiers.push({ type, value: canonical, isPrimary });
+}
+
+function canonicalizeIdentifier(
+  type: ItemIdentifierType,
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (type === "other") return trimmed;
+  return normalizeIdentifier(trimmed);
 }
