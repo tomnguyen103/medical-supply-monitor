@@ -57,6 +57,7 @@ export const env = {
   notifications: {
     resendApiKey: process.env.RESEND_API_KEY,
     alertFromEmail: process.env.ALERT_FROM_EMAIL,
+    alertToEmail: process.env.ALERT_TO_EMAIL,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
   },
   connectors: {

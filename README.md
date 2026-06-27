@@ -1,6 +1,6 @@
 # Critical Medical Supply Resilience Monitor
 
-![Status](https://img.shields.io/badge/status-Phase_4_scoring-0f766e)
+![Status](https://img.shields.io/badge/status-Phase_5_alerts_briefs-0f766e)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -26,10 +26,11 @@ final writes, or critical alert delivery. See [Product guardrails](#product-guar
 
 ---
 
-## Status: Phase 4 (Risk scoring)
+## Status: Phase 5 (Alerts + briefs)
 
 This repository currently contains the Phase 1 foundation, Phase 2 catalog/import
-workflow, Phase 3 ingestion loop, and Phase 4 scoring loop:
+workflow, Phase 3 ingestion loop, Phase 4 scoring loop, and Phase 5 alert/brief
+loop:
 
 - Next.js 16 / React 19 / TypeScript app, Vercel-ready
 - Clerk Organizations wiring (auth + tenancy), conditional and graceful
@@ -45,16 +46,18 @@ workflow, Phase 3 ingestion loop, and Phase 4 scoring loop:
   weights, sole-source exposure, days-on-hand, and persisted risk snapshots
 - CSV import population for item identifiers such as NDC, GTIN, UPC, SKU, MPN,
   FDA application number, and RxCUI
-- Event-triggered Inngest risk refresh that matches normalized signals to each
-  tenant catalog and stores evidence artifacts
+- Scheduled and event-triggered Inngest risk refresh that matches normalized
+  signals, scores snapshots, evaluates alert rules, and creates daily briefs
 - Tenant-scoped risk signals dashboard with severity, freshness, confidence,
   matched item/supplier, current score, evidence drawer, and score rationale
+- Alert rules CRUD, cooldown-aware evaluation, alert event history, in-app daily
+  briefs, Slack/email delivery hooks, and human approval tasks for critical alerts
 - Protected dashboard shell + landing and auth surfaces
 
 Every integration **boots gracefully without credentials** ("not configured"
 state), so you can run the app immediately and switch features on by adding env
-vars. Later phases (alerts, AI workflow, hardening) remain scaffolded or
-intentionally limited until implemented.
+vars. Later phases (AI workflow, hardening) remain scaffolded or intentionally
+limited until implemented.
 
 ---
 
@@ -88,6 +91,7 @@ Fill the relevant keys in `.env.local` (see `.env.example` for the full list):
 | Inngest | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Background jobs in production |
 | LangSmith | `LANGSMITH_API_KEY` (+ `LANGSMITH_TRACING=true`) | AI tracing / evals |
 | AI provider | `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) | LangGraph agents |
+| Notifications | `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `ALERT_TO_EMAIL`, `SLACK_WEBHOOK_URL` | Email and Slack alert delivery |
 
 ---
 
