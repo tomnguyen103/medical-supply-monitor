@@ -1,3 +1,4 @@
+import { runAlertEvaluation } from "@/lib/alerts/engine";
 import { runRiskIngestion } from "@/lib/ingestion/pipeline";
 import { runRiskScoring } from "@/lib/risk/snapshots";
 import { inngest } from "./client";
@@ -5,14 +6,14 @@ import { inngest } from "./client";
 /**
  * Daily risk refresh.
  *
- * Event-triggered for Phases 3-4. Phase 5 switches this to a schedule and
- * appends alert evaluation, human approval, and delivery.
+ * Scheduled daily in Phase 5, with the event trigger kept for manual refreshes.
+ * Critical alert delivery remains blocked behind human approval tasks.
  */
 export const dailyRiskRefresh = inngest.createFunction(
   {
     id: "daily-risk-refresh",
     name: "Daily Risk Refresh",
-    triggers: [{ event: "app/risk.refresh.requested" }],
+    triggers: [{ event: "app/risk.refresh.requested" }, { cron: "0 12 * * *" }],
   },
   async ({ step }) => {
     const ingestion = await step.run("ingest-risk-signals", async () => {
@@ -32,7 +33,19 @@ export const dailyRiskRefresh = inngest.createFunction(
         ].join(" "),
       );
     }
-    return { ok: ingestion.ok && scoring.ok, ingestion, scoring };
+    const alerts = await step.run("evaluate-alerts-and-briefs", async () => {
+      return runAlertEvaluation();
+    });
+    if (!alerts.ok) {
+      throw new Error(
+        [
+          "Risk refresh alert evaluation failed.",
+          `alerts_failed=${alerts.failed}`,
+          `alerts_skipped=${alerts.skipped ?? "none"}`,
+        ].join(" "),
+      );
+    }
+    return { ok: ingestion.ok && scoring.ok && alerts.ok, ingestion, scoring, alerts };
   },
 );
 
