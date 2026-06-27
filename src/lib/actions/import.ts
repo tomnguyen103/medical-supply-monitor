@@ -84,14 +84,12 @@ export async function importItemsAction(
     const existingBySku = new Map(
       existingItems
         .filter((row) => row.internalSku)
-        .map((row) => [row.internalSku!.toLowerCase(), row.id]),
+        .map((row) => [row.internalSku!, row.id]),
     );
 
     const itemRows = valid.map((v) => {
       const { identifiers, ...item } = v;
-      const existingId = v.internalSku
-        ? existingBySku.get(v.internalSku.toLowerCase())
-        : undefined;
+      const existingId = v.internalSku ? existingBySku.get(v.internalSku) : undefined;
       return {
         id: existingId ?? randomUUID(),
         wasExisting: Boolean(existingId),
@@ -100,40 +98,48 @@ export async function importItemsAction(
       };
     });
     const newItemRows = itemRows.filter((row) => !row.wasExisting);
-    const identifierRows = itemRows
-      .flatMap((row) =>
-        row.identifiers.map((identifier) => ({
-          organizationId: gate.orgId,
-          itemId: row.id,
-          type: identifier.type,
-          value: identifier.value,
-          isPrimary: identifier.isPrimary,
-        })),
-      );
 
-    let insertedCount = 0;
-    if (newItemRows.length > 0 && identifierRows.length > 0) {
-      const [inserted] = await db.batch([
-        db
-          .insert(items)
-          .values(newItemRows.map((row) => ({ id: row.id, ...row.item })))
-          .onConflictDoNothing()
-          .returning({ id: items.id }),
-        db
-          .insert(itemIdentifiers)
-          .values(identifierRows)
-          .onConflictDoNothing()
-          .returning({ id: itemIdentifiers.id }),
-      ]);
-      insertedCount = inserted.length;
-    } else if (newItemRows.length > 0) {
-      const inserted = await db
+    let inserted: Array<{ id: string }> = [];
+    if (newItemRows.length > 0) {
+      const insertedRows = await db
         .insert(items)
         .values(newItemRows.map((row) => ({ id: row.id, ...row.item })))
         .onConflictDoNothing()
         .returning({ id: items.id });
-      insertedCount = inserted.length;
-    } else if (identifierRows.length > 0) {
+      inserted = insertedRows;
+    }
+
+    const refreshedItems =
+      skus.length > 0
+        ? await db
+            .select({ id: items.id, internalSku: items.internalSku })
+            .from(items)
+            .where(and(eq(items.organizationId, gate.orgId), inArray(items.internalSku, skus)))
+        : [];
+    const resolvedBySku = new Map(
+      refreshedItems
+        .filter((row) => row.internalSku)
+        .map((row) => [row.internalSku!, row.id]),
+    );
+    const insertedIds = new Set(inserted.map((row) => row.id));
+    const identifierRows = itemRows.flatMap((row) => {
+      const resolvedItemId =
+        row.item.internalSku != null
+          ? resolvedBySku.get(row.item.internalSku)
+          : insertedIds.has(row.id)
+            ? row.id
+            : undefined;
+      if (!resolvedItemId) return [];
+      return row.identifiers.map((identifier) => ({
+        organizationId: gate.orgId,
+        itemId: resolvedItemId,
+        type: identifier.type,
+        value: identifier.value,
+        isPrimary: identifier.isPrimary,
+      }));
+    });
+
+    if (identifierRows.length > 0) {
       await db
         .insert(itemIdentifiers)
         .values(identifierRows)
@@ -145,9 +151,9 @@ export async function importItemsAction(
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: `Imported ${insertedCount} item(s).`,
-      inserted: insertedCount,
-      skipped: valid.length - insertedCount,
+      message: `Imported ${inserted.length} item(s).`,
+      inserted: inserted.length,
+      skipped: valid.length - inserted.length,
       errors,
     };
   } catch (e) {
