@@ -52,3 +52,8 @@ yarn-error.log*
 
 # OS / editors
 Thumbs.db
+
+# ruflo / ruvector agent tooling (local memory DBs, never project files)
+agentdb.rvf
+agentdb.rvf.lock
+ruvector.db
