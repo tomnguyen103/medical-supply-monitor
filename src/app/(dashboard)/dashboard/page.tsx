@@ -1,7 +1,9 @@
 import { TriangleAlert } from "lucide-react";
 
+import { DemoWorkspacePanel } from "@/components/dashboard/demo-workspace-panel";
 import { PageHeader, StatTile } from "@/components/dashboard/primitives";
 import { SetupChecklist } from "@/components/dashboard/setup-checklist";
+import { getOrgContext, hasOrgPermission } from "@/lib/auth/tenancy";
 import { integrations } from "@/lib/env";
 import { getCatalogContext, getCatalogCounts } from "@/lib/catalog";
 import { SCORING_VERSION } from "@/lib/risk/scoring";
@@ -12,18 +14,24 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
 const NEXT_STEPS = [
-  { phase: "Phase 7", text: "RBAC polish, audit logs, rate limits, retention controls" },
+  { phase: "MVP", text: "Configure Clerk and database, select an org, seed demo data" },
 ];
 
 export default async function OverviewPage() {
   const ctx = await getCatalogContext();
   const counts = ctx.ready ? await getCatalogCounts(ctx.orgId) : null;
+  const orgCtx = ctx.ready ? await getOrgContext() : null;
+  const canManageCatalog =
+    ctx.ready &&
+    orgCtx !== null &&
+    orgCtx.orgId === ctx.orgId &&
+    hasOrgPermission(orgCtx, "manage_catalog");
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Overview"
-        description="Foundation, catalog imports, ingestion, scoring, alerts, daily briefs, and the guarded AI workflow are live."
+        description="Foundation, catalog imports, ingestion, scoring, alerts, AI workflow, and production hardening are live."
       />
 
       {!integrations.database && (
@@ -69,23 +77,29 @@ export default async function OverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SetupChecklist />
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="font-medium">What comes next</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Phase 6 AI workflow is in. Hardening remains before demo readiness.
-            </p>
-          </div>
-          <ul className="divide-y divide-border">
-            {NEXT_STEPS.map((step) => (
-              <li key={step.phase} className="flex items-start gap-3 px-5 py-3">
-                <span className="mt-0.5 font-mono text-xs text-primary">{step.phase}</span>
-                <span className="text-sm text-muted-foreground">{step.text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {ctx.ready && canManageCatalog ? <DemoWorkspacePanel /> : <NextSteps />}
       </div>
+    </div>
+  );
+}
+
+function NextSteps() {
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-5 py-4">
+        <h2 className="font-medium">What comes next</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Phase 7 hardening is in. Configure an organization to run the demo.
+        </p>
+      </div>
+      <ul className="divide-y divide-border">
+        {NEXT_STEPS.map((step) => (
+          <li key={step.phase} className="flex items-start gap-3 px-5 py-3">
+            <span className="mt-0.5 font-mono text-xs text-primary">{step.phase}</span>
+            <span className="text-sm text-muted-foreground">{step.text}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

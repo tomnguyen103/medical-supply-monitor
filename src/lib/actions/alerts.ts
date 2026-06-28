@@ -3,8 +3,9 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+import { writeAuditLog } from "@/lib/audit";
 import { runAlertEvaluationForOrganization } from "@/lib/alerts/engine";
-import { getOrgContext } from "@/lib/auth/tenancy";
+import { getOrgContext, hasOrgPermission, type OrgContext } from "@/lib/auth/tenancy";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
   alertChannelEnum,
@@ -13,12 +14,12 @@ import {
   severityEnum,
 } from "@/lib/db/schema";
 import type { AlertChannel } from "@/lib/alerts/types";
+import { enforceActionRateLimit } from "@/lib/security/rate-limit";
 
 export async function createAlertRuleAction(
   formData: FormData,
 ): Promise<void> {
-  if (!isDatabaseConfigured) return;
-  const ctx = await getOrgContext();
+  const ctx = await ready("manage_alerts", "create_alert_rule");
   if (!ctx) return;
 
   const name = String(formData.get("name") ?? "").trim();
@@ -31,16 +32,25 @@ export async function createAlertRuleAction(
   const requireApprovalForCritical =
     formData.get("requireApprovalForCritical") === "on";
 
-  await db.insert(alertRules).values({
-    organizationId: ctx.orgId,
+  const [row] = await db
+    .insert(alertRules)
+    .values({
+      organizationId: ctx.orgId,
+      name,
+      description: String(formData.get("description") ?? "").trim() || null,
+      domain,
+      minSeverity,
+      channels,
+      cooldownMinutes,
+      requireApprovalForCritical,
+      createdBy: ctx.userId,
+    })
+    .returning({ id: alertRules.id });
+  await auditAlertAction(ctx, "alerts.rule.create", row?.id, {
     name,
-    description: String(formData.get("description") ?? "").trim() || null,
     domain,
     minSeverity,
     channels,
-    cooldownMinutes,
-    requireApprovalForCritical,
-    createdBy: ctx.userId,
   });
   revalidatePath("/dashboard/alerts");
 }
@@ -49,14 +59,17 @@ export async function setAlertRuleEnabledAction(
   ruleId: string,
   enabled: boolean,
 ): Promise<void> {
-  if (!isDatabaseConfigured) return;
-  const ctx = await getOrgContext();
+  const ctx = await ready("manage_alerts", "set_alert_rule_enabled");
   if (!ctx) return;
 
-  await db
+  const [row] = await db
     .update(alertRules)
     .set({ enabled })
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.enabled_update", ruleId, { enabled });
+  }
   revalidatePath("/dashboard/alerts");
 }
 
@@ -64,8 +77,7 @@ export async function updateAlertRuleAction(
   ruleId: string,
   formData: FormData,
 ): Promise<void> {
-  if (!isDatabaseConfigured) return;
-  const ctx = await getOrgContext();
+  const ctx = await ready("manage_alerts", "update_alert_rule");
   if (!ctx) return;
 
   const name = String(formData.get("name") ?? "").trim();
@@ -77,7 +89,7 @@ export async function updateAlertRuleAction(
   const requireApprovalForCritical =
     formData.get("requireApprovalForCritical") === "on";
 
-  await db
+  const [row] = await db
     .update(alertRules)
     .set({
       name,
@@ -88,27 +100,72 @@ export async function updateAlertRuleAction(
       cooldownMinutes,
       requireApprovalForCritical,
     })
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.update", ruleId, {
+      name,
+      domain,
+      minSeverity,
+      channels,
+    });
+  }
   revalidatePath("/dashboard/alerts");
 }
 
 export async function deleteAlertRuleAction(ruleId: string): Promise<void> {
-  if (!isDatabaseConfigured) return;
-  const ctx = await getOrgContext();
+  const ctx = await ready("manage_alerts", "delete_alert_rule");
   if (!ctx) return;
 
-  await db
+  const [row] = await db
     .delete(alertRules)
-    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)));
+    .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
+    .returning({ id: alertRules.id });
+  if (row) {
+    await auditAlertAction(ctx, "alerts.rule.delete", ruleId);
+  }
   revalidatePath("/dashboard/alerts");
 }
 
 export async function runAlertEvaluationAction(): Promise<void> {
-  if (!isDatabaseConfigured) return;
-  const ctx = await getOrgContext();
+  const ctx = await ready("run_operations", "run_alert_evaluation");
   if (!ctx) return;
-  await runAlertEvaluationForOrganization(ctx.orgId);
+  const result = await runAlertEvaluationForOrganization(ctx.orgId);
+  await auditAlertAction(ctx, "alerts.evaluate", ctx.orgId, {
+    events: result.events,
+    briefs: result.briefs,
+    failed: result.failed,
+  });
   revalidatePath("/dashboard/alerts");
+}
+
+async function ready(
+  permission: "manage_alerts" | "run_operations",
+  action: string,
+): Promise<OrgContext | null> {
+  if (!isDatabaseConfigured) return null;
+  const ctx = await getOrgContext();
+  if (!ctx || !hasOrgPermission(ctx, permission)) return null;
+  const rateLimit = await enforceActionRateLimit(ctx, action);
+  return rateLimit.ok ? ctx : null;
+}
+
+async function auditAlertAction(
+  ctx: OrgContext,
+  action: string,
+  subjectId: string | null | undefined,
+  metadata: Record<string, unknown> = {},
+) {
+  await writeAuditLog({
+    organizationId: ctx.orgId,
+    actorType: "user",
+    actorId: ctx.userId,
+    action,
+    subjectType: "alert",
+    subjectId,
+    summary: action,
+    metadata,
+  });
 }
 
 function parseDomain(value: FormDataEntryValue | null) {
