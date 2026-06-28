@@ -115,6 +115,17 @@ describe("validateItemRows", () => {
     expect(valid).toHaveLength(1);
     expect(errors[0]).toMatchObject({ row: 3, field: "sku" });
   });
+
+  it("rejects rows with PHI-like catalog content without echoing the value", () => {
+    const { valid, errors } = validateItemRows([
+      { name: "Sterile saline", notes: "MRN: AB-12345" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "notes" });
+    expect(errors[0]?.message).toContain("[redacted-patient-identifier]");
+    expect(errors[0]?.message).not.toContain("AB-12345");
+  });
 });
 
 describe("validateSupplierRows", () => {
@@ -132,6 +143,15 @@ describe("validateSupplierRows", () => {
     expect(dup.valid).toHaveLength(1);
     expect(dup.errors).toHaveLength(1);
   });
+
+  it("rejects patient-specific supplier rows", () => {
+    const { valid, errors } = validateSupplierRows([
+      { name: "Baxter", patient_name: "Case patient" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "patient_name" });
+  });
 });
 
 describe("validateFacilityRows", () => {
@@ -147,5 +167,14 @@ describe("validateFacilityRows", () => {
     expect(validateFacilityRows([{ city: "Nowhere" }]).errors[0]).toMatchObject({
       field: "name",
     });
+  });
+
+  it("rejects patient-specific facility rows", () => {
+    const { valid, errors } = validateFacilityRows([
+      { name: "Mercy Regional", patientId: "FAC-PAT-1001" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "patientId" });
   });
 });

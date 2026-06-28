@@ -59,6 +59,14 @@
     "typescript": "^5",
     "vitest": "4.1.9"
   },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.11"
+    },
+    "next": {
+      "postcss": "8.5.10"
+    }
+  },
   "engines": {
     "node": ">=20.9.0"
   }

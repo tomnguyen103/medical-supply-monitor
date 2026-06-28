@@ -4,6 +4,7 @@ import type {
   StalenessStatus,
 } from "@/lib/connectors/types";
 import type { RiskScoreComponent } from "@/lib/db/schema";
+import type { DeliveryStatus } from "./delivery";
 
 export const SEVERITY_RANK: Record<Severity, number> = {
   info: 0,
@@ -50,6 +51,8 @@ export interface AlertPayload {
   freshness: Record<string, unknown>;
   confidence: number;
 }
+
+export type DeliverableAlertStatus = "sent" | "failed" | "suppressed";
 
 export function severityAtLeast(value: Severity, minimum: Severity): boolean {
   return SEVERITY_RANK[value] >= SEVERITY_RANK[minimum];
@@ -154,6 +157,21 @@ export function buildDailyBriefPayload(
     },
     confidence: round(avgConfidence, 2),
   };
+}
+
+export function isAwaitingHumanApproval(event: {
+  requiresApproval: boolean;
+  status: string;
+}): boolean {
+  return event.requiresApproval && event.status === "awaiting_approval";
+}
+
+export function alertStatusForDeliveryStatus(
+  status: DeliveryStatus,
+): DeliverableAlertStatus {
+  if (status === "sent") return "sent";
+  if (status === "suppressed") return "suppressed";
+  return "failed";
 }
 
 export function extractSignalDomains(inputs: Record<string, unknown>): RiskDomain[] {

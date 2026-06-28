@@ -1,5 +1,6 @@
 import { pickField, type CsvRecord } from "./csv";
 import { normalizeEnum } from "./coerce";
+import { validateCatalogRowCompliance } from "./compliance";
 import type { RowError, ValidationResult } from "./types";
 
 export const SUPPLIER_TYPES = [
@@ -33,6 +34,11 @@ export function validateSupplierRows(
 
   rows.forEach((row, index) => {
     const line = index + 2;
+    const complianceError = validateCatalogRowCompliance(row, line);
+    if (complianceError) {
+      errors.push(complianceError);
+      return;
+    }
 
     const name = pickField(row, ["name", "supplier", "supplier_name", "vendor"]);
     if (!name) {

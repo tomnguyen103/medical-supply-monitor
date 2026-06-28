@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/dashboard/primitives";
 import { CatalogBlocked } from "@/components/dashboard/catalog-blocked";
 import { ImportPanel } from "@/components/dashboard/import-panel";
 import { FacilitiesTable } from "@/components/dashboard/facilities-table";
-import { getCatalogContext, listFacilities } from "@/lib/catalog";
+import { CATALOG_LIST_LIMIT, getCatalogContext, listFacilities } from "@/lib/catalog";
 import { importFacilitiesAction } from "@/lib/actions/import";
 import { FACILITY_CSV_TEMPLATE } from "@/lib/import";
 
@@ -17,7 +17,7 @@ export default async function FacilitiesPage() {
     <div className="space-y-8">
       <PageHeader
         title="Facilities"
-        description="Hospitals, clinics, pharmacies, and warehouses you monitor supplies for."
+        description={`Latest ${CATALOG_LIST_LIMIT} monitored hospitals, clinics, pharmacies, and warehouses.`}
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />

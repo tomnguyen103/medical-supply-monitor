@@ -69,24 +69,27 @@ export function DataTable<TData, TValue>({
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
+                  const headerLabel =
+                    typeof header.column.columnDef.header === "string"
+                      ? header.column.columnDef.header
+                      : header.id;
+                  const nextSortingOrder = header.column.getNextSortingOrder();
                   return (
                     <TableHead
                       key={header.id}
-                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                      className={canSort ? "cursor-pointer select-none" : undefined}
+                      aria-sort={getAriaSort(sorted)}
+                      className={canSort ? "select-none" : undefined}
                     >
                       {header.isPlaceholder ? null : (
-                        <span className="inline-flex items-center gap-1">
+                        <HeaderContent
+                          canSort={canSort}
+                          headerLabel={headerLabel}
+                          sorted={sorted}
+                          nextSortingOrder={nextSortingOrder}
+                          onToggle={header.column.getToggleSortingHandler()}
+                        >
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {canSort &&
-                            (sorted === "asc" ? (
-                              <ChevronUp className="size-3.5" />
-                            ) : sorted === "desc" ? (
-                              <ChevronDown className="size-3.5" />
-                            ) : (
-                              <ChevronsUpDown className="size-3.5 opacity-40" />
-                            ))}
-                        </span>
+                        </HeaderContent>
                       )}
                     </TableHead>
                   );
@@ -123,4 +126,61 @@ export function DataTable<TData, TValue>({
       </p>
     </div>
   );
+}
+
+function HeaderContent({
+  canSort,
+  headerLabel,
+  sorted,
+  nextSortingOrder,
+  onToggle,
+  children,
+}: {
+  canSort: boolean;
+  headerLabel: string;
+  sorted: false | "asc" | "desc";
+  nextSortingOrder: false | "asc" | "desc";
+  onToggle: ((event: unknown) => void) | undefined;
+  children: React.ReactNode;
+}) {
+  const content = (
+    <span className="inline-flex items-center gap-1">
+      {children}
+      {canSort && <SortIcon sorted={sorted} />}
+    </span>
+  );
+
+  if (!canSort) return content;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="-mx-2 inline-flex rounded-sm px-2 py-1 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      aria-label={sortButtonLabel(headerLabel, nextSortingOrder)}
+    >
+      {content}
+    </button>
+  );
+}
+
+function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
+  if (sorted === "asc") return <ChevronUp className="size-3.5" aria-hidden />;
+  if (sorted === "desc") return <ChevronDown className="size-3.5" aria-hidden />;
+  return <ChevronsUpDown className="size-3.5 opacity-40" aria-hidden />;
+}
+
+function getAriaSort(sorted: false | "asc" | "desc") {
+  if (sorted === "asc") return "ascending";
+  if (sorted === "desc") return "descending";
+  return undefined;
+}
+
+function sortButtonLabel(
+  headerLabel: string,
+  nextSortingOrder: false | "asc" | "desc",
+) {
+  if (nextSortingOrder === "asc") return `Sort ${headerLabel} ascending`;
+  if (nextSortingOrder === "desc") return `Sort ${headerLabel} descending`;
+  return `Clear ${headerLabel} sorting`;
 }

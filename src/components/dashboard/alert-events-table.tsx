@@ -4,6 +4,11 @@ import { type ColumnDef } from "@tanstack/react-table";
 
 import { SeverityBadge } from "@/components/severity-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  approveAlertEventAction,
+  rejectAlertEventAction,
+} from "@/lib/actions/alerts";
 import type { AlertEventListRow } from "@/lib/alerts/queries";
 import { formatLabel } from "@/lib/utils";
 import { DataTable } from "./data-table";
@@ -98,6 +103,37 @@ const columns: ColumnDef<AlertEventListRow>[] = [
     accessorKey: "createdAt",
     header: "Created",
     cell: ({ row }) => formatDate(row.original.createdAt),
+  },
+  {
+    id: "approval",
+    header: "Approval",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.requiresApproval && row.original.status === "awaiting_approval" ? (
+        <div className="flex flex-wrap gap-2">
+          <form action={approveAlertEventAction.bind(null, row.original.id)}>
+            <Button
+              type="submit"
+              size="sm"
+              aria-label={`Approve alert event ${row.original.id}`}
+            >
+              Approve
+            </Button>
+          </form>
+          <form action={rejectAlertEventAction.bind(null, row.original.id)}>
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              aria-label={`Reject alert event ${row.original.id}`}
+            >
+              Reject
+            </Button>
+          </form>
+        </div>
+      ) : (
+        muted
+      ),
   },
 ];
 

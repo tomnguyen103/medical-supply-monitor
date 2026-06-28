@@ -1,5 +1,6 @@
 import { pickField, type CsvRecord } from "./csv";
 import { normalizeEnum } from "./coerce";
+import { validateCatalogRowCompliance } from "./compliance";
 import type { RowError, ValidationResult } from "./types";
 
 export const FACILITY_TYPES = [
@@ -34,6 +35,11 @@ export function validateFacilityRows(
 
   rows.forEach((row, index) => {
     const line = index + 2;
+    const complianceError = validateCatalogRowCompliance(row, line);
+    if (complianceError) {
+      errors.push(complianceError);
+      return;
+    }
 
     const name = pickField(row, ["name", "facility", "facility_name", "site"]);
     if (!name) {

@@ -4,7 +4,7 @@ import { CatalogBlocked } from "@/components/dashboard/catalog-blocked";
 import { PageHeader, EmptyState } from "@/components/dashboard/primitives";
 import { SignalsTable } from "@/components/dashboard/signals-table";
 import { getCatalogContext } from "@/lib/catalog";
-import { listRiskSignals } from "@/lib/signals";
+import { RISK_SIGNAL_LIST_LIMIT, listRiskSignals } from "@/lib/signals";
 
 // Tenant-scoped, auth + DB backed: always render per-request.
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function SignalsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Risk signals"
-        description="Tenant-matched signals with deterministic scores, freshness, and evidence."
+        description={`Latest ${RISK_SIGNAL_LIST_LIMIT} tenant-matched signals with deterministic scores, freshness, and evidence.`}
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />
