@@ -112,12 +112,21 @@ const columns: ColumnDef<AlertEventListRow>[] = [
       row.original.requiresApproval && row.original.status === "awaiting_approval" ? (
         <div className="flex flex-wrap gap-2">
           <form action={approveAlertEventAction.bind(null, row.original.id)}>
-            <Button type="submit" size="sm">
+            <Button
+              type="submit"
+              size="sm"
+              aria-label={`Approve alert event ${row.original.id}`}
+            >
               Approve
             </Button>
           </form>
           <form action={rejectAlertEventAction.bind(null, row.original.id)}>
-            <Button type="submit" variant="outline" size="sm">
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              aria-label={`Reject alert event ${row.original.id}`}
+            >
               Reject
             </Button>
           </form>

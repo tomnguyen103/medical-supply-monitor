@@ -146,11 +146,11 @@ describe("validateSupplierRows", () => {
 
   it("rejects patient-specific supplier rows", () => {
     const { valid, errors } = validateSupplierRows([
-      { name: "Baxter", "Patient Name": "Case patient" },
+      { name: "Baxter", patient_name: "Case patient" },
     ]);
 
     expect(valid).toHaveLength(0);
-    expect(errors[0]).toMatchObject({ row: 2, field: "Patient Name" });
+    expect(errors[0]).toMatchObject({ row: 2, field: "patient_name" });
   });
 });
 
@@ -167,5 +167,14 @@ describe("validateFacilityRows", () => {
     expect(validateFacilityRows([{ city: "Nowhere" }]).errors[0]).toMatchObject({
       field: "name",
     });
+  });
+
+  it("rejects patient-specific facility rows", () => {
+    const { valid, errors } = validateFacilityRows([
+      { name: "Mercy Regional", patientId: "FAC-PAT-1001" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "patientId" });
   });
 });

@@ -38,7 +38,7 @@ export function listItems(
     .select()
     .from(items)
     .where(eq(items.organizationId, organizationId))
-    .orderBy(desc(items.createdAt))
+    .orderBy(desc(items.createdAt), desc(items.id))
     .limit(limit);
 }
 
@@ -50,7 +50,7 @@ export function listSuppliers(
     .select()
     .from(suppliers)
     .where(eq(suppliers.organizationId, organizationId))
-    .orderBy(desc(suppliers.createdAt))
+    .orderBy(desc(suppliers.createdAt), desc(suppliers.id))
     .limit(limit);
 }
 
@@ -62,7 +62,7 @@ export function listFacilities(
     .select()
     .from(facilities)
     .where(eq(facilities.organizationId, organizationId))
-    .orderBy(desc(facilities.createdAt))
+    .orderBy(desc(facilities.createdAt), desc(facilities.id))
     .limit(limit);
 }
 

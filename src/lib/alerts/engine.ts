@@ -178,7 +178,7 @@ export async function approveAlertEventForDelivery({
 
   if (!approved) return { ok: false, reason: "not-awaiting-approval" };
 
-  await completeHumanApprovalTask({
+  const taskCompleted = await completeHumanApprovalTask({
     organizationId,
     eventId,
     status: "approved",
@@ -187,25 +187,35 @@ export async function approveAlertEventForDelivery({
     asOf,
   });
 
-  const delivery = await deliverAlert({
-    channel: event.channel,
-    title: event.title,
-    body: event.body ?? "",
-  });
-  const finalStatus = alertStatusForDeliveryStatus(delivery.status);
+  let deliveryStatus: DeliverableAlertStatus = "failed";
+  let deliveryError: string | undefined;
+  try {
+    const delivery = await deliverAlert({
+      channel: event.channel,
+      title: event.title,
+      body: event.body ?? "",
+    });
+    deliveryStatus = alertStatusForDeliveryStatus(delivery.status);
+    deliveryError = delivery.error;
+  } catch (error) {
+    deliveryError =
+      error instanceof Error
+        ? error.message
+        : "Alert delivery failed before receiving a response.";
+  }
   await updateAlertEventStatus({
     organizationId,
     eventId,
-    status: finalStatus,
-    error: delivery.error,
+    status: deliveryStatus,
+    error: deliveryError,
     asOf,
   });
 
   return {
     ok: true,
     status: "approved",
-    deliveryStatus: finalStatus,
-    error: delivery.error,
+    deliveryStatus,
+    error: taskCompleted ? deliveryError : "Approval task was already closed.",
   };
 }
 
@@ -627,8 +637,8 @@ async function completeHumanApprovalTask({
   decision: string;
   actorId: string;
   asOf: Date;
-}) {
-  await db
+}): Promise<boolean> {
+  const completed = await db
     .update(humanReviewTasks)
     .set({
       status,
@@ -640,9 +650,14 @@ async function completeHumanApprovalTask({
       and(
         eq(humanReviewTasks.organizationId, organizationId),
         eq(humanReviewTasks.type, "critical_alert_approval"),
+        eq(humanReviewTasks.subjectType, "alert_event"),
         eq(humanReviewTasks.subjectId, eventId),
+        eq(humanReviewTasks.status, "open"),
       ),
-    );
+    )
+    .returning({ id: humanReviewTasks.id });
+
+  return completed.length > 0;
 }
 
 async function reserveCooldown({

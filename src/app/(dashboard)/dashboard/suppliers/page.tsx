@@ -17,7 +17,7 @@ export default async function SuppliersPage() {
     <div className="space-y-8">
       <PageHeader
         title="Suppliers"
-        description={`Latest ${CATALOG_LIST_LIMIT} suppliers by import or update time.`}
+        description={`Latest ${CATALOG_LIST_LIMIT} suppliers by import time.`}
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />

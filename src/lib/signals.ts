@@ -99,7 +99,11 @@ export async function listRiskSignals(
       ),
     )
     .where(eq(riskSignals.organizationId, organizationId))
-    .orderBy(sql`${riskSignals.lastFetchedAt} desc nulls last`, desc(riskSignals.createdAt))
+    .orderBy(
+      sql`${riskSignals.lastFetchedAt} desc nulls last`,
+      desc(riskSignals.createdAt),
+      desc(riskSignals.id),
+    )
     .limit(limit);
 
   if (rows.length === 0) return [];

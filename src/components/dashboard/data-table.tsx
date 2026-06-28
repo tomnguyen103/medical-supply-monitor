@@ -73,6 +73,7 @@ export function DataTable<TData, TValue>({
                     typeof header.column.columnDef.header === "string"
                       ? header.column.columnDef.header
                       : header.id;
+                  const nextSortingOrder = header.column.getNextSortingOrder();
                   return (
                     <TableHead
                       key={header.id}
@@ -84,6 +85,7 @@ export function DataTable<TData, TValue>({
                           canSort={canSort}
                           headerLabel={headerLabel}
                           sorted={sorted}
+                          nextSortingOrder={nextSortingOrder}
                           onToggle={header.column.getToggleSortingHandler()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -130,12 +132,14 @@ function HeaderContent({
   canSort,
   headerLabel,
   sorted,
+  nextSortingOrder,
   onToggle,
   children,
 }: {
   canSort: boolean;
   headerLabel: string;
   sorted: false | "asc" | "desc";
+  nextSortingOrder: false | "asc" | "desc";
   onToggle: ((event: unknown) => void) | undefined;
   children: React.ReactNode;
 }) {
@@ -153,7 +157,7 @@ function HeaderContent({
       type="button"
       onClick={onToggle}
       className="-mx-2 inline-flex rounded-sm px-2 py-1 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      aria-label={sortButtonLabel(headerLabel, sorted)}
+      aria-label={sortButtonLabel(headerLabel, nextSortingOrder)}
     >
       {content}
     </button>
@@ -172,8 +176,11 @@ function getAriaSort(sorted: false | "asc" | "desc") {
   return undefined;
 }
 
-function sortButtonLabel(headerLabel: string, sorted: false | "asc" | "desc") {
-  if (sorted === "asc") return `Sort ${headerLabel} descending`;
-  if (sorted === "desc") return `Clear ${headerLabel} sorting`;
-  return `Sort ${headerLabel} ascending`;
+function sortButtonLabel(
+  headerLabel: string,
+  nextSortingOrder: false | "asc" | "desc",
+) {
+  if (nextSortingOrder === "asc") return `Sort ${headerLabel} ascending`;
+  if (nextSortingOrder === "desc") return `Sort ${headerLabel} descending`;
+  return `Clear ${headerLabel} sorting`;
 }

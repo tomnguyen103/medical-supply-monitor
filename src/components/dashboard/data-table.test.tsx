@@ -26,7 +26,7 @@ describe("DataTable", () => {
 
     expect(html).toContain('aria-label="Filter rows"');
     expect(html).toContain('aria-label="Sort Name ascending"');
-    expect(html).toContain('aria-label="Sort Score ascending"');
+    expect(html).toContain('aria-label="Sort Score descending"');
     expect(html).toContain("<button");
   });
 });

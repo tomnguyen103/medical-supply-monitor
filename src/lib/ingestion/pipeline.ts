@@ -1,6 +1,6 @@
 import "server-only";
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { getActiveConnectors, getConnector } from "@/lib/connectors/registry";
 import type { Connector } from "@/lib/connectors/types";
@@ -79,6 +79,7 @@ export async function runRiskIngestion(
         signals,
         tenantIds,
         options.tenantBatchSize ?? INGESTION_TENANT_BATCH_SIZE,
+        options.signal,
       );
       summaries.push({
         connectorId: connector.id,
@@ -131,6 +132,7 @@ async function fetchConnectorSignals(
     timeoutMs: number;
   },
 ) {
+  ensureNotAborted(signal);
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -161,20 +163,24 @@ async function persistSignalsForTenants(
   signals: NormalizedRiskSignal[],
   tenantIds: string[],
   tenantBatchSize: number,
+  abortSignal?: AbortSignal,
 ): Promise<{ matched: number; persisted: number; failed: number }> {
   let matched = 0;
   let persisted = 0;
   let failed = 0;
 
   for (const tenantBatch of chunk(tenantIds, tenantBatchSize)) {
+    ensureNotAborted(abortSignal);
     const catalogs = await Promise.all(tenantBatch.map((id) => loadTenantCatalog(id)));
     for (const catalog of catalogs) {
-      for (const signal of signals) {
-        const match = matchSignalToCatalog(signal, catalog);
+      for (const riskSignal of signals) {
+        ensureNotAborted(abortSignal);
+        const match = matchSignalToCatalog(riskSignal, catalog);
         if (!match) continue;
         matched += 1;
         try {
-          await upsertMatchedSignal(signal, match);
+          ensureNotAborted(abortSignal);
+          await upsertMatchedSignal(riskSignal, match);
           persisted += 1;
         } catch {
           failed += 1;
@@ -196,7 +202,7 @@ async function loadTenantIds(): Promise<string[]> {
 }
 
 async function loadTenantCatalog(organizationId: string): Promise<TenantCatalog> {
-  const [itemRows, identifierRows, supplierRows, itemSupplierRows] = await Promise.all([
+  const [itemRows, supplierRows] = await Promise.all([
     db
       .select({
         id: items.id,
@@ -205,17 +211,7 @@ async function loadTenantCatalog(organizationId: string): Promise<TenantCatalog>
       })
       .from(items)
       .where(eq(items.organizationId, organizationId))
-      .orderBy(asc(items.id))
-      .limit(INGESTION_CATALOG_LIMIT),
-    db
-      .select({
-        itemId: itemIdentifiers.itemId,
-        type: itemIdentifiers.type,
-        value: itemIdentifiers.value,
-      })
-      .from(itemIdentifiers)
-      .where(eq(itemIdentifiers.organizationId, organizationId))
-      .orderBy(asc(itemIdentifiers.id))
+      .orderBy(desc(items.updatedAt), desc(items.createdAt), desc(items.id))
       .limit(INGESTION_CATALOG_LIMIT),
     db
       .select({
@@ -225,17 +221,45 @@ async function loadTenantCatalog(organizationId: string): Promise<TenantCatalog>
       })
       .from(suppliers)
       .where(eq(suppliers.organizationId, organizationId))
-      .orderBy(asc(suppliers.id))
+      .orderBy(desc(suppliers.updatedAt), desc(suppliers.createdAt), desc(suppliers.id))
       .limit(INGESTION_CATALOG_LIMIT),
-    db
-      .select({
-        itemId: itemSuppliers.itemId,
-        supplierId: itemSuppliers.supplierId,
-      })
-      .from(itemSuppliers)
-      .where(eq(itemSuppliers.organizationId, organizationId))
-      .orderBy(asc(itemSuppliers.id))
-      .limit(INGESTION_CATALOG_LIMIT),
+  ]);
+
+  const itemIds = itemRows.map((item) => item.id);
+  const supplierIds = supplierRows.map((supplier) => supplier.id);
+  const [identifierRows, itemSupplierRows] = await Promise.all([
+    itemIds.length === 0
+      ? []
+      : db
+          .select({
+            itemId: itemIdentifiers.itemId,
+            type: itemIdentifiers.type,
+            value: itemIdentifiers.value,
+          })
+          .from(itemIdentifiers)
+          .where(
+            and(
+              eq(itemIdentifiers.organizationId, organizationId),
+              inArray(itemIdentifiers.itemId, itemIds),
+            ),
+          )
+          .orderBy(asc(itemIdentifiers.itemId), asc(itemIdentifiers.type), asc(itemIdentifiers.value)),
+    itemIds.length === 0 || supplierIds.length === 0
+      ? []
+      : db
+          .select({
+            itemId: itemSuppliers.itemId,
+            supplierId: itemSuppliers.supplierId,
+          })
+          .from(itemSuppliers)
+          .where(
+            and(
+              eq(itemSuppliers.organizationId, organizationId),
+              inArray(itemSuppliers.itemId, itemIds),
+              inArray(itemSuppliers.supplierId, supplierIds),
+            ),
+          )
+          .orderBy(asc(itemSuppliers.itemId), asc(itemSuppliers.supplierId)),
   ]);
 
   return {
@@ -269,4 +293,10 @@ function chunk<T>(values: T[], size: number): T[][] {
     batches.push(values.slice(index, index + batchSize));
   }
   return batches;
+}
+
+function ensureNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new Error("Risk ingestion was aborted.");
+  }
 }
