@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 
-import { writeAuditLog } from "@/lib/audit";
 import { getOrgContext, hasOrgPermission } from "@/lib/auth/tenancy";
 import type { OrgContext } from "@/lib/auth/tenancy";
 import { seedDemoWorkspace, type DemoWorkspaceSeedResult } from "@/lib/demo/workspace";
@@ -44,22 +43,20 @@ export async function seedDemoWorkspaceAction(): Promise<DemoWorkspaceActionResu
   const result = await seedDemoWorkspace({
     organizationId: demo.orgId,
     organizationName: demo.name,
-  });
-  if (!result.ok) return { ok: false, message: "Demo workspace seed was skipped." };
-
-  await writeAuditLog({
-    organizationId: ctx.orgId,
-    actorType: "user",
-    actorId: ctx.userId,
-    action: "demo_workspace.seed",
-    subjectType: "organization",
-    subjectId: ctx.orgId,
-    summary: "Seeded buyer-ready demo workspace.",
-    metadata: {
-      inserted: result.inserted,
-      rateLimitConfigured: rateLimit.configured,
+    auditLog: {
+      organizationId: ctx.orgId,
+      actorType: "user",
+      actorId: ctx.userId,
+      action: "demo_workspace.seed",
+      subjectType: "organization",
+      subjectId: ctx.orgId,
+      summary: "Seeded buyer-ready demo workspace.",
+      metadata: {
+        rateLimitConfigured: rateLimit.configured,
+      },
     },
   });
+  if (!result.ok) return { ok: false, message: "Demo workspace seed was skipped." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/items");

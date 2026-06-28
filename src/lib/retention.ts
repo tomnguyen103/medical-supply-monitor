@@ -1,4 +1,4 @@
-import { and, count, eq, lt } from "drizzle-orm";
+import { and, count, eq, isNull, lt, sql, type SQL } from "drizzle-orm";
 
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
@@ -51,17 +51,23 @@ export function resolveRetentionPolicy(
     settings?.retention && typeof settings.retention === "object"
       ? (settings.retention as Record<string, unknown>)
       : {};
-  return {
-    riskSignalDays: parseDays(retention.riskSignalDays, DEFAULT_RETENTION_POLICY.riskSignalDays),
-    riskSnapshotDays: parseDays(
-      retention.riskSnapshotDays,
-      DEFAULT_RETENTION_POLICY.riskSnapshotDays,
-    ),
-    evidenceDays: parseDays(retention.evidenceDays, DEFAULT_RETENTION_POLICY.evidenceDays),
+  const evidenceDays = parseDays(retention.evidenceDays, DEFAULT_RETENTION_POLICY.evidenceDays);
+  const riskSignalDays = parseDays(
+    retention.riskSignalDays,
+    DEFAULT_RETENTION_POLICY.riskSignalDays,
+  );
+  const riskSnapshotDays = parseDays(
+    retention.riskSnapshotDays,
+    DEFAULT_RETENTION_POLICY.riskSnapshotDays,
+  );
+  return enforceEvidenceParentRetention({
+    riskSignalDays: Math.max(riskSignalDays, evidenceDays),
+    riskSnapshotDays: Math.max(riskSnapshotDays, evidenceDays),
+    evidenceDays,
     alertEventDays: parseDays(retention.alertEventDays, DEFAULT_RETENTION_POLICY.alertEventDays),
     agentRunDays: parseDays(retention.agentRunDays, DEFAULT_RETENTION_POLICY.agentRunDays),
     auditLogDays: parseDays(retention.auditLogDays, DEFAULT_RETENTION_POLICY.auditLogDays),
-  };
+  });
 }
 
 export async function runRetentionCleanup({
@@ -95,6 +101,12 @@ export async function runRetentionCleanup({
     });
     addDeleted(totals, tenant.deleted);
   }
+  const systemRows = await runSystemRetentionCleanup({
+    policy: DEFAULT_RETENTION_POLICY,
+    asOf,
+    apply,
+  });
+  addDeleted(totals, systemRows.deleted);
 
   return {
     ok: true,
@@ -125,13 +137,25 @@ export async function runRetentionCleanupForOrganization({
     };
   }
 
+  const effectivePolicy = enforceEvidenceParentRetention(policy);
+  const evidenceCutoff = cutoff(asOf, effectivePolicy.evidenceDays);
   const deleted = {
-    evidenceArtifacts: await cleanupEvidence(organizationId, cutoff(asOf, policy.evidenceDays), apply),
-    alertEvents: await cleanupAlertEvents(organizationId, cutoff(asOf, policy.alertEventDays), apply),
-    agentRuns: await cleanupAgentRuns(organizationId, cutoff(asOf, policy.agentRunDays), apply),
-    auditLog: await cleanupAuditLog(organizationId, cutoff(asOf, policy.auditLogDays), apply),
-    riskSnapshots: await cleanupRiskSnapshots(organizationId, cutoff(asOf, policy.riskSnapshotDays), apply),
-    riskSignals: await cleanupRiskSignals(organizationId, cutoff(asOf, policy.riskSignalDays), apply),
+    evidenceArtifacts: await cleanupEvidence(organizationId, evidenceCutoff, apply),
+    alertEvents: await cleanupAlertEvents(organizationId, cutoff(asOf, effectivePolicy.alertEventDays), apply),
+    agentRuns: await cleanupAgentRuns(organizationId, cutoff(asOf, effectivePolicy.agentRunDays), apply),
+    auditLog: await cleanupAuditLog(organizationId, cutoff(asOf, effectivePolicy.auditLogDays), apply),
+    riskSnapshots: await cleanupRiskSnapshots(
+      organizationId,
+      cutoff(asOf, effectivePolicy.riskSnapshotDays),
+      evidenceCutoff,
+      apply,
+    ),
+    riskSignals: await cleanupRiskSignals(
+      organizationId,
+      cutoff(asOf, effectivePolicy.riskSignalDays),
+      evidenceCutoff,
+      apply,
+    ),
   };
 
   return {
@@ -142,158 +166,158 @@ export async function runRetentionCleanupForOrganization({
   };
 }
 
+async function runSystemRetentionCleanup({
+  policy,
+  asOf,
+  apply,
+}: {
+  policy: RetentionPolicy;
+  asOf: Date;
+  apply: boolean;
+}): Promise<RetentionCleanupSummary> {
+  const deleted = emptyDeleted();
+  deleted.agentRuns = await cleanupAgentRuns(null, cutoff(asOf, policy.agentRunDays), apply);
+  deleted.auditLog = await cleanupAuditLog(null, cutoff(asOf, policy.auditLogDays), apply);
+  return {
+    ok: true,
+    apply,
+    tenants: 0,
+    deleted,
+  };
+}
+
 async function cleanupEvidence(organizationId: string, olderThan: Date, apply: boolean) {
+  const where = and(
+    eq(evidenceArtifacts.organizationId, organizationId),
+    lt(evidenceArtifacts.capturedAt, olderThan),
+  );
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(evidenceArtifacts)
-        .where(
-          and(
-            eq(evidenceArtifacts.organizationId, organizationId),
-            lt(evidenceArtifacts.capturedAt, olderThan),
-          ),
-        ),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(evidenceArtifacts)
-      .where(
-        and(
-          eq(evidenceArtifacts.organizationId, organizationId),
-          lt(evidenceArtifacts.capturedAt, olderThan),
-        ),
-      ),
+  return deleteAndCount(
+    sql`delete from ${evidenceArtifacts} where ${where} returning 1`,
   );
-  await db
-    .delete(evidenceArtifacts)
-    .where(
-      and(
-        eq(evidenceArtifacts.organizationId, organizationId),
-        lt(evidenceArtifacts.capturedAt, olderThan),
-      ),
-    );
-  return deleted;
 }
 
 async function cleanupAlertEvents(organizationId: string, olderThan: Date, apply: boolean) {
+  const where = and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan));
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(alertEvents)
-        .where(
-          and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)),
-        ),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(alertEvents)
-      .where(
-        and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)),
-      ),
-  );
-  await db
-    .delete(alertEvents)
-    .where(and(eq(alertEvents.organizationId, organizationId), lt(alertEvents.createdAt, olderThan)));
-  return deleted;
+  return deleteAndCount(sql`delete from ${alertEvents} where ${where} returning 1`);
 }
 
-async function cleanupAgentRuns(organizationId: string, olderThan: Date, apply: boolean) {
+async function cleanupAgentRuns(organizationId: string | null, olderThan: Date, apply: boolean) {
+  const where = and(
+    organizationId === null ? isNull(agentRuns.organizationId) : eq(agentRuns.organizationId, organizationId),
+    lt(agentRuns.createdAt, olderThan),
+  );
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(agentRuns)
-        .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan))),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(agentRuns)
-      .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan))),
-  );
-  await db
-    .delete(agentRuns)
-    .where(and(eq(agentRuns.organizationId, organizationId), lt(agentRuns.createdAt, olderThan)));
-  return deleted;
+  return deleteAndCount(sql`delete from ${agentRuns} where ${where} returning 1`);
 }
 
-async function cleanupAuditLog(organizationId: string, olderThan: Date, apply: boolean) {
+async function cleanupAuditLog(organizationId: string | null, olderThan: Date, apply: boolean) {
+  const where = and(
+    organizationId === null ? isNull(auditLog.organizationId) : eq(auditLog.organizationId, organizationId),
+    lt(auditLog.createdAt, olderThan),
+  );
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(auditLog)
-        .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan))),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(auditLog)
-      .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan))),
-  );
-  await db
-    .delete(auditLog)
-    .where(and(eq(auditLog.organizationId, organizationId), lt(auditLog.createdAt, olderThan)));
-  return deleted;
+  return deleteAndCount(sql`delete from ${auditLog} where ${where} returning 1`);
 }
 
-async function cleanupRiskSnapshots(organizationId: string, olderThan: Date, apply: boolean) {
+async function cleanupRiskSnapshots(
+  organizationId: string,
+  olderThan: Date,
+  evidenceOlderThan: Date,
+  apply: boolean,
+) {
+  const where = and(
+    eq(riskSnapshots.organizationId, organizationId),
+    lt(riskSnapshots.computedAt, olderThan),
+    sql`not exists (
+      select 1
+      from ${evidenceArtifacts}
+      where ${evidenceArtifacts.organizationId} = ${organizationId}
+        and ${evidenceArtifacts.snapshotId} = ${riskSnapshots.id}
+        and ${evidenceArtifacts.capturedAt} >= ${evidenceOlderThan}
+    )`,
+  );
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(riskSnapshots)
-        .where(
-          and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)),
-        ),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(riskSnapshots)
-      .where(
-        and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)),
-      ),
-  );
-  await db
-    .delete(riskSnapshots)
-    .where(and(eq(riskSnapshots.organizationId, organizationId), lt(riskSnapshots.computedAt, olderThan)));
-  return deleted;
+  return deleteAndCount(sql`delete from ${riskSnapshots} where ${where} returning 1`);
 }
 
-async function cleanupRiskSignals(organizationId: string, olderThan: Date, apply: boolean) {
+async function cleanupRiskSignals(
+  organizationId: string,
+  olderThan: Date,
+  evidenceOlderThan: Date,
+  apply: boolean,
+) {
+  const where = and(
+    eq(riskSignals.organizationId, organizationId),
+    lt(riskSignals.createdAt, olderThan),
+    sql`not exists (
+      select 1
+      from ${evidenceArtifacts}
+      where ${evidenceArtifacts.organizationId} = ${organizationId}
+        and ${evidenceArtifacts.signalId} = ${riskSignals.id}
+        and ${evidenceArtifacts.capturedAt} >= ${evidenceOlderThan}
+    )`,
+  );
   if (!apply) {
     return countRows(
       db
         .select({ value: count() })
         .from(riskSignals)
-        .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan))),
+        .where(where),
     );
   }
-  const deleted = await countRows(
-    db
-      .select({ value: count() })
-      .from(riskSignals)
-      .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan))),
-  );
-  await db
-    .delete(riskSignals)
-    .where(and(eq(riskSignals.organizationId, organizationId), lt(riskSignals.createdAt, olderThan)));
-  return deleted;
+  return deleteAndCount(sql`delete from ${riskSignals} where ${where} returning 1`);
 }
 
 async function countRows(query: Promise<Array<{ value: number }>>) {
   const [row] = await query;
   return row?.value ?? 0;
+}
+
+async function deleteAndCount(deleteSql: SQL) {
+  const result = await db.execute<{ value: number | string }>(sql`
+    with deleted as (${deleteSql})
+    select count(*)::int as value from deleted
+  `);
+  const rows = "rows" in result ? result.rows : result;
+  const value = rows[0]?.value ?? 0;
+  return typeof value === "number" ? value : Number(value);
 }
 
 function parseDays(value: unknown, fallback: number): number {
@@ -305,6 +329,14 @@ function parseDays(value: unknown, fallback: number): number {
         : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(2_555, Math.max(30, Math.floor(parsed)));
+}
+
+function enforceEvidenceParentRetention(policy: RetentionPolicy): RetentionPolicy {
+  return {
+    ...policy,
+    riskSignalDays: Math.max(policy.riskSignalDays, policy.evidenceDays),
+    riskSnapshotDays: Math.max(policy.riskSnapshotDays, policy.evidenceDays),
+  };
 }
 
 function cutoff(asOf: Date, days: number) {

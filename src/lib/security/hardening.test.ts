@@ -54,9 +54,25 @@ describe("retention policy", () => {
         },
       }),
     ).toMatchObject({
-      riskSignalDays: 30,
+      riskSignalDays: 365,
       auditLogDays: 2555,
       agentRunDays: 90,
+    });
+  });
+
+  it("keeps parent risk records at least as long as linked evidence", () => {
+    expect(
+      resolveRetentionPolicy({
+        retention: {
+          riskSignalDays: 90,
+          riskSnapshotDays: 120,
+          evidenceDays: 400,
+        },
+      }),
+    ).toMatchObject({
+      riskSignalDays: 400,
+      riskSnapshotDays: 400,
+      evidenceDays: 400,
     });
   });
 });

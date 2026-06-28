@@ -14,6 +14,8 @@ export interface AuditLogInput {
   metadata?: Record<string, unknown>;
 }
 
+export type AuditLogInsert = typeof auditLog.$inferInsert;
+
 const SENSITIVE_KEYS = new Set([
   "password",
   "token",
@@ -31,16 +33,7 @@ const SENSITIVE_KEYS = new Set([
 export async function writeAuditLog(input: AuditLogInput): Promise<boolean> {
   if (!isDatabaseConfigured) return false;
   try {
-    await db.insert(auditLog).values({
-      organizationId: input.organizationId,
-      actorType: input.actorType,
-      actorId: input.actorId,
-      action: input.action,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      summary: input.summary,
-      metadata: sanitizeAuditMetadata(input.metadata ?? {}),
-    });
+    await db.insert(auditLog).values(buildAuditLogInsert(input));
     return true;
   } catch {
     console.warn("[audit] Failed to write audit log.", {
@@ -50,6 +43,19 @@ export async function writeAuditLog(input: AuditLogInput): Promise<boolean> {
     });
     return false;
   }
+}
+
+export function buildAuditLogInsert(input: AuditLogInput): AuditLogInsert {
+  return {
+    organizationId: input.organizationId,
+    actorType: input.actorType,
+    actorId: input.actorId,
+    action: input.action,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    summary: input.summary,
+    metadata: sanitizeAuditMetadata(input.metadata ?? {}),
+  };
 }
 
 export function sanitizeAuditMetadata(

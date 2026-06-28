@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 
 import { and, eq, inArray } from "drizzle-orm";
 
+import { buildAuditLogInsert, type AuditLogInput } from "@/lib/audit";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
+  auditLog,
   alertRules,
   facilities,
   itemIdentifiers,
@@ -105,33 +107,16 @@ export async function seedDemoWorkspace({
   organizationId,
   organizationName = "Demo Health System",
   asOf = new Date(),
+  auditLog: auditLogInput,
 }: {
   organizationId: string;
   organizationName?: string;
   asOf?: Date;
+  auditLog: AuditLogInput;
 }): Promise<DemoWorkspaceSeedResult> {
   if (!isDatabaseConfigured) {
     return { ok: false, skipped: "database-unconfigured", inserted: emptyInserted() };
   }
-
-  await db
-    .insert(organizations)
-    .values({
-      id: organizationId,
-      name: organizationName,
-      slug: organizationId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-      settings: {
-        retention: {
-          riskSignalDays: 365,
-          riskSnapshotDays: 365,
-          evidenceDays: 365,
-          alertEventDays: 365,
-          agentRunDays: 180,
-          auditLogDays: 730,
-        },
-      },
-    })
-    .onConflictDoNothing();
 
   const facilityRows = DEMO_FACILITIES.map((facility) => ({
     id: demoId(organizationId, "facility", facility.key),
@@ -213,52 +198,72 @@ export async function seedDemoWorkspace({
   ];
 
   const inserted = emptyInserted();
-  inserted.facilities = (
-    await db.insert(facilities).values(facilityRows).onConflictDoNothing().returning({ id: facilities.id })
-  ).length;
-  inserted.suppliers = (
-    await db.insert(suppliers).values(supplierRows).onConflictDoNothing().returning({ id: suppliers.id })
-  ).length;
-  inserted.items = (
-    await db.insert(items).values(itemRows).onConflictDoNothing().returning({ id: items.id })
-  ).length;
-  inserted.identifiers = (
-    await db.insert(itemIdentifiers).values(identifierRows).onConflictDoNothing().returning({ id: itemIdentifiers.id })
-  ).length;
-  inserted.itemSuppliers = (
-    await db.insert(itemSuppliers).values(itemSupplierRows).onConflictDoNothing().returning({ id: itemSuppliers.id })
-  ).length;
-  inserted.inventorySnapshots = (
-    await db.insert(inventorySnapshots).values(inventoryRows).onConflictDoNothing().returning({ id: inventorySnapshots.id })
-  ).length;
   const demoSignalSources = [...new Set(signalRows.map((row) => row.source))];
-  if (demoSignalSources.length > 0) {
-    await db
-      .delete(riskSignals)
-      .where(
-        and(
-          eq(riskSignals.organizationId, organizationId),
-          inArray(riskSignals.source, demoSignalSources),
-        ),
-      );
-  }
-  inserted.riskSignals = (
-    await db
-      .insert(riskSignals)
-      .values(signalRows)
+  const [
+    ,
+    facilityResult,
+    supplierResult,
+    itemResult,
+    identifierResult,
+    itemSupplierResult,
+    inventoryResult,
+    ,
+    signalResult,
+    snapshotResult,
+    alertRuleResult,
+  ] = await db.batch([
+    db
+      .insert(organizations)
+      .values({
+        id: organizationId,
+        name: organizationName,
+        slug: organizationId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        settings: {
+          retention: {
+            riskSignalDays: 365,
+            riskSnapshotDays: 365,
+            evidenceDays: 365,
+            alertEventDays: 365,
+            agentRunDays: 180,
+            auditLogDays: 730,
+          },
+        },
+      })
+      .onConflictDoNothing(),
+    db.insert(facilities).values(facilityRows).onConflictDoNothing().returning({ id: facilities.id }),
+    db.insert(suppliers).values(supplierRows).onConflictDoNothing().returning({ id: suppliers.id }),
+    db.insert(items).values(itemRows).onConflictDoNothing().returning({ id: items.id }),
+    db.insert(itemIdentifiers).values(identifierRows).onConflictDoNothing().returning({ id: itemIdentifiers.id }),
+    db.insert(itemSuppliers).values(itemSupplierRows).onConflictDoNothing().returning({ id: itemSuppliers.id }),
+    db
+      .insert(inventorySnapshots)
+      .values(inventoryRows)
       .onConflictDoNothing()
-      .returning({ id: riskSignals.id })
-  ).length;
-  inserted.riskSnapshots = (
-    await db
-      .insert(riskSnapshots)
-      .values(snapshotRows)
-      .onConflictDoNothing()
-      .returning({ id: riskSnapshots.id })
-  ).length;
-  inserted.alertRules = (
-    await db.insert(alertRules).values(alertRuleRows).onConflictDoNothing().returning({ id: alertRules.id })
-  ).length;
+      .returning({ id: inventorySnapshots.id }),
+    db.delete(riskSignals).where(
+      and(
+        eq(riskSignals.organizationId, organizationId),
+        inArray(riskSignals.source, demoSignalSources),
+      ),
+    ),
+    db.insert(riskSignals).values(signalRows).onConflictDoNothing().returning({ id: riskSignals.id }),
+    db.insert(riskSnapshots).values(snapshotRows).onConflictDoNothing().returning({ id: riskSnapshots.id }),
+    db.insert(alertRules).values(alertRuleRows).onConflictDoNothing().returning({ id: alertRules.id }),
+    db
+      .insert(auditLog)
+      .values(buildAuditLogInsert(auditLogInput))
+      .returning({ id: auditLog.id }),
+  ] as const);
+
+  inserted.facilities = facilityResult.length;
+  inserted.suppliers = supplierResult.length;
+  inserted.items = itemResult.length;
+  inserted.identifiers = identifierResult.length;
+  inserted.itemSuppliers = itemSupplierResult.length;
+  inserted.inventorySnapshots = inventoryResult.length;
+  inserted.riskSignals = signalResult.length;
+  inserted.riskSnapshots = snapshotResult.length;
+  inserted.alertRules = alertRuleResult.length;
 
   return { ok: true, inserted };
 }
