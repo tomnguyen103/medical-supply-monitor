@@ -10,7 +10,7 @@ const CHECKS: Array<{ key: keyof typeof integrations; label: string; required: b
   { key: "redis", label: "Upstash Redis (cache / rate limits)", required: false },
   { key: "inngest", label: "Inngest background jobs", required: false },
   { key: "langsmith", label: "LangSmith AI tracing", required: false },
-  { key: "ai", label: "AI model provider (LangGraph)", required: false },
+  { key: "ai", label: "AI provider (OpenAI / Gemini / local)", required: false },
 ];
 
 export function SetupChecklist() {

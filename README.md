@@ -98,7 +98,7 @@ Fill the relevant keys in `.env.local` (see `.env.example` for the full list):
 | Upstash Redis | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Cache, rate limits, cooldowns |
 | Inngest | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Background jobs in production |
 | LangSmith | `LANGSMITH_API_KEY` (+ `LANGSMITH_TRACING=true`) | AI tracing / evals |
-| AI provider | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL` | LangGraph agents |
+| AI provider | `OPENAI_API_KEY` or `GEMINI_API_KEY`; optional `LOCAL_LLM_BASE_URL` backup | LangGraph agents |
 | Notifications | `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `ALERT_TO_EMAIL`, `SLACK_WEBHOOK_URL` | Email and Slack alert delivery |
 
 ---

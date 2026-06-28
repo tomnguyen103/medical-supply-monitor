@@ -8,14 +8,21 @@ vi.mock("@/lib/env", async () => {
       ...actual.env,
       ai: {
         ...actual.env.ai,
-        anthropicApiKey: undefined,
-        anthropicModel: undefined,
+        provider: undefined,
+        openaiApiKey: undefined,
+        openaiModel: undefined,
+        geminiApiKey: undefined,
+        geminiModel: undefined,
+        localLlmBaseUrl: undefined,
+        localLlmModel: undefined,
       },
     },
     integrations: {
       ...actual.integrations,
       ai: false,
-      anthropic: false,
+      openai: false,
+      gemini: false,
+      localLlm: false,
       database: false,
       langsmith: false,
     },
@@ -113,7 +120,7 @@ describe("AI workflow safety", () => {
 });
 
 describe("AI workflow graph", () => {
-  it("runs with deterministic fallback when Anthropic is not configured", async () => {
+  it("runs with deterministic fallback when no AI provider is configured", async () => {
     const result = await runDailyBriefWorkflow({
       organizationId: "org-test",
       asOf: "2026-06-27T12:00:00.000Z",

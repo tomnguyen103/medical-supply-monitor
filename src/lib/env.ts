@@ -51,9 +51,16 @@ export const env = {
     endpoint: process.env.LANGSMITH_ENDPOINT ?? "https://api.smith.langchain.com",
   },
   ai: {
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    anthropicModel: process.env.ANTHROPIC_MODEL,
+    provider: process.env.AI_PROVIDER,
     openaiApiKey: process.env.OPENAI_API_KEY,
+    openaiModel: process.env.OPENAI_MODEL,
+    openaiBaseUrl: process.env.OPENAI_BASE_URL,
+    geminiApiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
+    geminiModel: process.env.GEMINI_MODEL,
+    geminiBaseUrl: process.env.GEMINI_BASE_URL,
+    localLlmBaseUrl: process.env.LOCAL_LLM_BASE_URL,
+    localLlmApiKey: process.env.LOCAL_LLM_API_KEY,
+    localLlmModel: process.env.LOCAL_LLM_MODEL,
   },
   notifications: {
     resendApiKey: process.env.RESEND_API_KEY,
@@ -85,8 +92,13 @@ export const integrations = {
   inngest: present(env.inngest.eventKey) || present(env.inngest.signingKey),
   sentry: present(env.sentry.dsn),
   langsmith: present(env.langsmith.apiKey),
-  anthropic: present(env.ai.anthropicApiKey),
-  ai: present(env.ai.anthropicApiKey),
+  openai: present(env.ai.openaiApiKey),
+  gemini: present(env.ai.geminiApiKey),
+  localLlm: present(env.ai.localLlmBaseUrl),
+  ai:
+    present(env.ai.openaiApiKey) ||
+    present(env.ai.geminiApiKey) ||
+    present(env.ai.localLlmBaseUrl),
   resend: present(env.notifications.resendApiKey),
   slack: present(env.notifications.slackWebhookUrl),
   nasaFirms: present(env.connectors.nasaFirmsMapKey),

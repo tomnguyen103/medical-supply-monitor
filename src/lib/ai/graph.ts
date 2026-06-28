@@ -6,6 +6,11 @@ import { Client as LangSmithClient } from "langsmith";
 
 import { configureLangSmith, isLangSmithEnabled } from "@/lib/ai/langsmith";
 import {
+  draftRiskBriefWithAi,
+  getAiModelLabel,
+  getConfiguredAiProviders,
+} from "@/lib/ai/providers";
+import {
   assessCompliance,
   redactSensitiveText,
   sanitizeTracePayload,
@@ -124,7 +129,12 @@ export interface AiWorkflowRunSummary {
   failed: number;
 }
 
-export const DEFAULT_ANTHROPIC_MODEL = "claude-fable-5";
+const RISK_BRIEF_SYSTEM_PROMPT = [
+  "You draft healthcare operations supply resilience briefs.",
+  "Do not include PHI, EHR integration, diagnosis, treatment, drug substitution, or patient-specific guidance.",
+  "Do not compute or change risk scores. Use only the deterministic score summary supplied by code.",
+  "Write concise operations review language with evidence, freshness, and confidence references.",
+].join(" ");
 
 /** Nodes implemented by code and never delegated to an LLM. */
 export const DETERMINISTIC_NODES: ReadonlySet<GraphNode> = new Set([
@@ -194,7 +204,7 @@ const WorkflowAnnotation = Annotation.Root({
   }),
   model: Annotation<string>({
     reducer: (_left, right) => right,
-    default: () => getAnthropicModel(),
+    default: () => getAiModelLabel(),
   }),
   modelError: Annotation<string | null>({
     reducer: (_left, right) => right,
@@ -259,7 +269,7 @@ export async function runDailyBriefWorkflow(
   const asOf = parseDate(input.asOf ?? startedAt);
   const snapshots =
     input.snapshots ?? (await loadLatestSnapshots(input.organizationId));
-  const model = getAnthropicModel();
+  const model = getAiModelLabel();
   const initialState: WorkflowState = {
     organizationId: input.organizationId,
     asOf: asOf.toISOString(),
@@ -436,7 +446,7 @@ export function buildDeterministicBriefDraft(
 
 function supervisorNode(state: WorkflowState): WorkflowUpdate {
   return {
-    model: getAnthropicModel(),
+    model: getAiModelLabel(),
     agentDrafts: {
       supervisor: {
         node: "supervisor",
@@ -502,7 +512,8 @@ function importMappingAgentNode(state: WorkflowState): WorkflowUpdate {
 
 async function briefingAgentNode(state: WorkflowState): Promise<WorkflowUpdate> {
   const fallbackDraft = buildDeterministicBriefDraft(state);
-  if (!integrations.ai || !env.ai.anthropicApiKey) {
+  const providers = getConfiguredAiProviders();
+  if (!integrations.ai || providers.length === 0) {
     return {
       finalDraft: fallbackDraft,
       status: "ai_not_configured",
@@ -517,15 +528,27 @@ async function briefingAgentNode(state: WorkflowState): Promise<WorkflowUpdate> 
   }
 
   try {
-    const draft = await draftWithAnthropic(state);
+    const promptPayload = buildAiPromptPayload(state);
+    const promptCompliance = assessCompliance([JSON.stringify(promptPayload)]);
+    if (promptCompliance.blocked) {
+      throw new Error("AI prompt blocked by compliance preflight.");
+    }
+    const draft = await draftRiskBriefWithAi(
+      {
+        system: RISK_BRIEF_SYSTEM_PROMPT,
+        prompt: JSON.stringify(promptPayload),
+      },
+      providers,
+    );
     return {
-      finalDraft: draft,
+      finalDraft: draft.text,
       status: "succeeded",
+      model: draft.modelLabel,
       agentDrafts: {
         briefing_agent: {
           node: "briefing_agent",
           status: "drafted",
-          text: "Anthropic draft generated from redaction-safe risk metadata.",
+          text: `${draft.modelLabel} draft generated from redaction-safe risk metadata.`,
         },
       },
     };
@@ -639,53 +662,6 @@ function buildScoreSummary(
         }
       : null,
   };
-}
-
-async function draftWithAnthropic(state: WorkflowState): Promise<string> {
-  const apiKey = env.ai.anthropicApiKey;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
-  const promptPayload = buildAiPromptPayload(state);
-  const promptCompliance = assessCompliance([JSON.stringify(promptPayload)]);
-  if (promptCompliance.blocked) {
-    throw new Error("AI prompt blocked by compliance preflight.");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      model: getAnthropicModel(),
-      max_tokens: 700,
-      temperature: 0.2,
-      system: [
-        "You draft healthcare operations supply resilience briefs.",
-        "Do not include PHI, EHR integration, diagnosis, treatment, drug substitution, or patient-specific guidance.",
-        "Do not compute or change risk scores. Use only the deterministic score summary supplied by code.",
-        "Write concise operations review language with evidence, freshness, and confidence references.",
-      ].join(" "),
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify(promptPayload),
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic drafting failed with ${response.status}.`);
-  }
-  const payload = (await response.json()) as AnthropicMessageResponse;
-  const text = payload.content
-    .map((block) => (block.type === "text" ? block.text : ""))
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("Anthropic returned an empty draft.");
-  return redactSensitiveText(text);
 }
 
 async function loadLatestSnapshots(
@@ -957,10 +933,6 @@ function parseDate(value: Date | string): Date {
   return parsed;
 }
 
-function getAnthropicModel() {
-  return env.ai.anthropicModel ?? DEFAULT_ANTHROPIC_MODEL;
-}
-
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown AI workflow error.";
 }
@@ -993,16 +965,3 @@ const IMPORT_FIELD_PATTERNS: Array<{
   { targetField: "mpn", patterns: ["mpn", "manufacturer part"] },
   { targetField: "daysOnHand", patterns: ["days on hand", "doh"] },
 ];
-
-interface AnthropicMessageResponse {
-  content: Array<
-    | {
-        type: "text";
-        text: string;
-      }
-    | {
-        type: string;
-        [key: string]: unknown;
-      }
-  >;
-}
