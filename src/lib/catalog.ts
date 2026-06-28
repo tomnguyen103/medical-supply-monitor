@@ -12,6 +12,8 @@ import {
 } from "@/lib/db/schema";
 import { getOrgContext } from "@/lib/auth/tenancy";
 
+export const CATALOG_LIST_LIMIT = 200;
+
 export type CatalogContext =
   | { ready: true; orgId: string }
   | { ready: false; reason: "no-db" | "no-org" };
@@ -28,28 +30,40 @@ export async function getCatalogContext(): Promise<CatalogContext> {
   return { ready: true, orgId: ctx.orgId };
 }
 
-export function listItems(organizationId: string): Promise<Item[]> {
+export function listItems(
+  organizationId: string,
+  limit = CATALOG_LIST_LIMIT,
+): Promise<Item[]> {
   return db
     .select()
     .from(items)
     .where(eq(items.organizationId, organizationId))
-    .orderBy(desc(items.createdAt));
+    .orderBy(desc(items.createdAt))
+    .limit(limit);
 }
 
-export function listSuppliers(organizationId: string): Promise<Supplier[]> {
+export function listSuppliers(
+  organizationId: string,
+  limit = CATALOG_LIST_LIMIT,
+): Promise<Supplier[]> {
   return db
     .select()
     .from(suppliers)
     .where(eq(suppliers.organizationId, organizationId))
-    .orderBy(desc(suppliers.createdAt));
+    .orderBy(desc(suppliers.createdAt))
+    .limit(limit);
 }
 
-export function listFacilities(organizationId: string): Promise<Facility[]> {
+export function listFacilities(
+  organizationId: string,
+  limit = CATALOG_LIST_LIMIT,
+): Promise<Facility[]> {
   return db
     .select()
     .from(facilities)
     .where(eq(facilities.organizationId, organizationId))
-    .orderBy(desc(facilities.createdAt));
+    .orderBy(desc(facilities.createdAt))
+    .limit(limit);
 }
 
 export async function getCatalogCounts(organizationId: string) {

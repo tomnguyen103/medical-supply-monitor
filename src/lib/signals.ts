@@ -12,6 +12,8 @@ import {
   type RiskScoreComponent,
 } from "@/lib/db/schema";
 
+export const RISK_SIGNAL_LIST_LIMIT = 200;
+
 export interface SignalEvidenceRow {
   id: string;
   type: string;
@@ -62,6 +64,7 @@ export interface SignalListRow {
 
 export async function listRiskSignals(
   organizationId: string,
+  limit = RISK_SIGNAL_LIST_LIMIT,
 ): Promise<SignalListRow[]> {
   const rows = await db
     .select({
@@ -96,7 +99,8 @@ export async function listRiskSignals(
       ),
     )
     .where(eq(riskSignals.organizationId, organizationId))
-    .orderBy(sql`${riskSignals.lastFetchedAt} desc nulls last`, desc(riskSignals.createdAt));
+    .orderBy(sql`${riskSignals.lastFetchedAt} desc nulls last`, desc(riskSignals.createdAt))
+    .limit(limit);
 
   if (rows.length === 0) return [];
 
@@ -139,7 +143,7 @@ async function loadLatestSnapshotsByItem(
   if (itemIds.length === 0) return snapshotsByItem;
 
   const rows = await db
-    .select({
+    .selectDistinctOn([riskSnapshots.itemId], {
       itemId: riskSnapshots.itemId,
       id: riskSnapshots.id,
       scoringVersion: riskSnapshots.scoringVersion,
@@ -160,7 +164,7 @@ async function loadLatestSnapshotsByItem(
         inArray(riskSnapshots.itemId, itemIds),
       ),
     )
-    .orderBy(desc(riskSnapshots.computedAt));
+    .orderBy(riskSnapshots.itemId, desc(riskSnapshots.computedAt));
 
   for (const row of rows) {
     if (snapshotsByItem.has(row.itemId)) continue;

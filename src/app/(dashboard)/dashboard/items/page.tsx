@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/dashboard/primitives";
 import { CatalogBlocked } from "@/components/dashboard/catalog-blocked";
 import { ImportPanel } from "@/components/dashboard/import-panel";
 import { ItemsTable } from "@/components/dashboard/items-table";
-import { getCatalogContext, listItems } from "@/lib/catalog";
+import { CATALOG_LIST_LIMIT, getCatalogContext, listItems } from "@/lib/catalog";
 import { importItemsAction } from "@/lib/actions/import";
 import { ITEM_CSV_TEMPLATE } from "@/lib/import";
 
@@ -17,7 +17,7 @@ export default async function ItemsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Items"
-        description="Your monitored catalog of critical drugs, devices, and supplies."
+        description={`Latest ${CATALOG_LIST_LIMIT} monitored drugs, devices, and supplies.`}
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />

@@ -1,6 +1,7 @@
 import { pickField, type CsvRecord } from "./csv";
 import { normalizeIdentifier } from "@/lib/connectors/helpers";
 import { normalizeEnum, parseBoolean, parseInteger } from "./coerce";
+import { validateCatalogRowCompliance } from "./compliance";
 import type { RowError, ValidationResult } from "./types";
 
 export const ITEM_CATEGORIES = [
@@ -64,6 +65,11 @@ export function validateItemRows(rows: CsvRecord[]): ValidationResult<ImportItem
 
   rows.forEach((row, index) => {
     const line = index + 2; // header occupies line 1
+    const complianceError = validateCatalogRowCompliance(row, line);
+    if (complianceError) {
+      errors.push(complianceError);
+      return;
+    }
 
     const name = pickField(row, ["name", "item", "item_name", "description"]);
     if (!name) {

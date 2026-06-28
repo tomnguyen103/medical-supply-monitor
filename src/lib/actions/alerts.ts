@@ -4,7 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { writeAuditLog } from "@/lib/audit";
-import { runAlertEvaluationForOrganization } from "@/lib/alerts/engine";
+import {
+  approveAlertEventForDelivery,
+  rejectAlertEventForDelivery,
+  runAlertEvaluationForOrganization,
+} from "@/lib/alerts/engine";
 import { getOrgContext, hasOrgPermission, type OrgContext } from "@/lib/auth/tenancy";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
@@ -136,6 +140,32 @@ export async function runAlertEvaluationAction(): Promise<void> {
     briefs: result.briefs,
     failed: result.failed,
   });
+  revalidatePath("/dashboard/alerts");
+}
+
+export async function approveAlertEventAction(eventId: string): Promise<void> {
+  const ctx = await ready("manage_alerts", "approve_alert_event");
+  if (!ctx) return;
+
+  const result = await approveAlertEventForDelivery({
+    organizationId: ctx.orgId,
+    eventId,
+    actorId: ctx.userId,
+  });
+  await auditAlertAction(ctx, "alerts.event.approve", eventId, result);
+  revalidatePath("/dashboard/alerts");
+}
+
+export async function rejectAlertEventAction(eventId: string): Promise<void> {
+  const ctx = await ready("manage_alerts", "reject_alert_event");
+  if (!ctx) return;
+
+  const result = await rejectAlertEventForDelivery({
+    organizationId: ctx.orgId,
+    eventId,
+    actorId: ctx.userId,
+  });
+  await auditAlertAction(ctx, "alerts.event.reject", eventId, result);
   revalidatePath("/dashboard/alerts");
 }
 

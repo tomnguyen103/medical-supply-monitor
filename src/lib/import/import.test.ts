@@ -115,6 +115,17 @@ describe("validateItemRows", () => {
     expect(valid).toHaveLength(1);
     expect(errors[0]).toMatchObject({ row: 3, field: "sku" });
   });
+
+  it("rejects rows with PHI-like catalog content without echoing the value", () => {
+    const { valid, errors } = validateItemRows([
+      { name: "Sterile saline", notes: "MRN: AB-12345" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "notes" });
+    expect(errors[0]?.message).toContain("[redacted-patient-identifier]");
+    expect(errors[0]?.message).not.toContain("AB-12345");
+  });
 });
 
 describe("validateSupplierRows", () => {
@@ -131,6 +142,15 @@ describe("validateSupplierRows", () => {
     const dup = validateSupplierRows([{ name: "Acme" }, { name: "acme" }]);
     expect(dup.valid).toHaveLength(1);
     expect(dup.errors).toHaveLength(1);
+  });
+
+  it("rejects patient-specific supplier rows", () => {
+    const { valid, errors } = validateSupplierRows([
+      { name: "Baxter", "Patient Name": "Case patient" },
+    ]);
+
+    expect(valid).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ row: 2, field: "Patient Name" });
   });
 });
 

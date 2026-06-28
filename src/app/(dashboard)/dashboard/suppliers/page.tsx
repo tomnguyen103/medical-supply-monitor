@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/dashboard/primitives";
 import { CatalogBlocked } from "@/components/dashboard/catalog-blocked";
 import { ImportPanel } from "@/components/dashboard/import-panel";
 import { SuppliersTable } from "@/components/dashboard/suppliers-table";
-import { getCatalogContext, listSuppliers } from "@/lib/catalog";
+import { CATALOG_LIST_LIMIT, getCatalogContext, listSuppliers } from "@/lib/catalog";
 import { importSuppliersAction } from "@/lib/actions/import";
 import { SUPPLIER_CSV_TEMPLATE } from "@/lib/import";
 
@@ -17,7 +17,7 @@ export default async function SuppliersPage() {
     <div className="space-y-8">
       <PageHeader
         title="Suppliers"
-        description="Supplier exposure: manufacturers, distributors, and sourcing risk."
+        description={`Latest ${CATALOG_LIST_LIMIT} suppliers by import or update time.`}
       />
       {!ctx.ready ? (
         <CatalogBlocked reason={ctx.reason} />

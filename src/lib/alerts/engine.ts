@@ -7,8 +7,11 @@ import {
   buildAlertPayload,
   buildDailyBriefPayload,
   SEVERITY_RANK,
+  alertStatusForDeliveryStatus,
+  isAwaitingHumanApproval,
   snapshotMatchesRule,
   type AlertPayload,
+  type DeliverableAlertStatus,
   type AlertRuleLike,
   type SnapshotLike,
 } from "@/lib/alerts/core";
@@ -41,6 +44,16 @@ export interface AlertEvaluationSummary {
   awaitingApproval: number;
   failed: number;
 }
+
+export type AlertApprovalOutcome =
+  | {
+      ok: true;
+      status: "approved";
+      deliveryStatus: DeliverableAlertStatus;
+      error?: string;
+    }
+  | { ok: true; status: "rejected" }
+  | { ok: false; reason: "not-found" | "not-awaiting-approval" };
 
 type RuleRow = AlertRuleLike & {
   channels: AlertChannel[];
@@ -114,6 +127,142 @@ export async function runAlertEvaluationForOrganization(
     tenants: 1,
     ...tenant,
   };
+}
+
+export async function approveAlertEventForDelivery({
+  organizationId,
+  eventId,
+  actorId,
+  asOf = new Date(),
+}: {
+  organizationId: string;
+  eventId: string;
+  actorId: string;
+  asOf?: Date;
+}): Promise<AlertApprovalOutcome> {
+  const [event] = await db
+    .select({
+      id: alertEvents.id,
+      channel: alertEvents.channel,
+      title: alertEvents.title,
+      body: alertEvents.body,
+      status: alertEvents.status,
+      requiresApproval: alertEvents.requiresApproval,
+    })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.id, eventId), eq(alertEvents.organizationId, organizationId)))
+    .limit(1);
+
+  if (!event) return { ok: false, reason: "not-found" };
+  if (!isAwaitingHumanApproval(event)) {
+    return { ok: false, reason: "not-awaiting-approval" };
+  }
+
+  const [approved] = await db
+    .update(alertEvents)
+    .set({
+      status: "approved",
+      approvedBy: actorId,
+      approvedAt: asOf,
+      error: null,
+    })
+    .where(
+      and(
+        eq(alertEvents.id, eventId),
+        eq(alertEvents.organizationId, organizationId),
+        eq(alertEvents.status, "awaiting_approval"),
+        eq(alertEvents.requiresApproval, true),
+      ),
+    )
+    .returning({ id: alertEvents.id });
+
+  if (!approved) return { ok: false, reason: "not-awaiting-approval" };
+
+  await completeHumanApprovalTask({
+    organizationId,
+    eventId,
+    status: "approved",
+    decision: "approved",
+    actorId,
+    asOf,
+  });
+
+  const delivery = await deliverAlert({
+    channel: event.channel,
+    title: event.title,
+    body: event.body ?? "",
+  });
+  const finalStatus = alertStatusForDeliveryStatus(delivery.status);
+  await updateAlertEventStatus({
+    organizationId,
+    eventId,
+    status: finalStatus,
+    error: delivery.error,
+    asOf,
+  });
+
+  return {
+    ok: true,
+    status: "approved",
+    deliveryStatus: finalStatus,
+    error: delivery.error,
+  };
+}
+
+export async function rejectAlertEventForDelivery({
+  organizationId,
+  eventId,
+  actorId,
+  asOf = new Date(),
+}: {
+  organizationId: string;
+  eventId: string;
+  actorId: string;
+  asOf?: Date;
+}): Promise<AlertApprovalOutcome> {
+  const [event] = await db
+    .select({
+      id: alertEvents.id,
+      status: alertEvents.status,
+      requiresApproval: alertEvents.requiresApproval,
+    })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.id, eventId), eq(alertEvents.organizationId, organizationId)))
+    .limit(1);
+
+  if (!event) return { ok: false, reason: "not-found" };
+  if (!isAwaitingHumanApproval(event)) {
+    return { ok: false, reason: "not-awaiting-approval" };
+  }
+
+  const [rejected] = await db
+    .update(alertEvents)
+    .set({
+      status: "rejected",
+      error: "Rejected by human reviewer.",
+    })
+    .where(
+      and(
+        eq(alertEvents.id, eventId),
+        eq(alertEvents.organizationId, organizationId),
+        eq(alertEvents.status, "awaiting_approval"),
+        eq(alertEvents.requiresApproval, true),
+      ),
+    )
+    .returning({ id: alertEvents.id });
+
+  if (!rejected) return { ok: false, reason: "not-awaiting-approval" };
+
+  await completeHumanApprovalTask({
+    organizationId,
+    eventId,
+    status: "rejected",
+    decision: "rejected",
+    actorId,
+    asOf,
+  });
+
+  return { ok: true, status: "rejected" };
 }
 
 async function evaluateTenantAlerts(organizationId: string, asOf: Date) {
@@ -462,6 +611,38 @@ async function createHumanApprovalTask({
       confidence: payload.confidence,
     },
   });
+}
+
+async function completeHumanApprovalTask({
+  organizationId,
+  eventId,
+  status,
+  decision,
+  actorId,
+  asOf,
+}: {
+  organizationId: string;
+  eventId: string;
+  status: "approved" | "rejected";
+  decision: string;
+  actorId: string;
+  asOf: Date;
+}) {
+  await db
+    .update(humanReviewTasks)
+    .set({
+      status,
+      decision,
+      decidedBy: actorId,
+      decidedAt: asOf,
+    })
+    .where(
+      and(
+        eq(humanReviewTasks.organizationId, organizationId),
+        eq(humanReviewTasks.type, "critical_alert_approval"),
+        eq(humanReviewTasks.subjectId, eventId),
+      ),
+    );
 }
 
 async function reserveCooldown({

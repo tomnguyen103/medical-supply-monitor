@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alertStatusForDeliveryStatus,
   buildAlertPayload,
   buildDailyBriefPayload,
   extractSignalDomains,
+  isAwaitingHumanApproval,
   severityAtLeast,
   snapshotMatchesRule,
   type SnapshotLike,
@@ -107,5 +109,29 @@ describe("alert core helpers", () => {
       changedSnapshotIds: ["snap-1"],
       reviewedSnapshotIds: ["snap-1"],
     });
+  });
+
+  it("identifies only pending critical approval events as actionable", () => {
+    expect(
+      isAwaitingHumanApproval({
+        requiresApproval: true,
+        status: "awaiting_approval",
+      }),
+    ).toBe(true);
+    expect(
+      isAwaitingHumanApproval({
+        requiresApproval: false,
+        status: "awaiting_approval",
+      }),
+    ).toBe(false);
+    expect(isAwaitingHumanApproval({ requiresApproval: true, status: "sent" })).toBe(
+      false,
+    );
+  });
+
+  it("maps delivery adapter results to final alert statuses", () => {
+    expect(alertStatusForDeliveryStatus("sent")).toBe("sent");
+    expect(alertStatusForDeliveryStatus("suppressed")).toBe("suppressed");
+    expect(alertStatusForDeliveryStatus("failed")).toBe("failed");
   });
 });
