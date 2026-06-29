@@ -1,10 +1,32 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { Fraunces, Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 
 import { env, integrations } from "@/lib/env";
 import "./globals.css";
+
+// Marketing-surface type system: a characterful display serif, a humanist
+// grotesque for body, and a monospace for instrument-style data. Variables are
+// global; the app/dashboard keeps Geist (set on <body>).
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
+  variable: "--font-fraunces",
+});
+const hanken = Hanken_Grotesk({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-hanken",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-plex-mono",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(env.app.url),
@@ -24,7 +46,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${fraunces.variable} ${hanken.variable} ${plexMono.variable}`}
     >
       <body className="min-h-[100dvh] bg-background font-sans text-foreground antialiased">
         {children}
