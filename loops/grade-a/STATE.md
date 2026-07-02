@@ -31,7 +31,7 @@ permissions to remove the need for this workaround.
 |---|---|---|---|---|
 | P0 restore-tree | (none — working-tree-only fix) | **DONE** | — (no diff vs main; see below) | Discarded corruption via `git stash`, not a commit. See "P0 details". |
 | P1 ci-gates | `chore/ci-gates` | **DONE — MERGED** | [#10](https://github.com/tomnguyen103/medical-supply-monitor/pull/10) | CI verified green on real GitHub Actions (not just locally). One CodeRabbit finding (missing `persist-credentials: false`), fixed and confirmed "✅ Addressed" before merge. See "P1 details". |
-| P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | IN PROGRESS | — | Research done (tenancy.ts, schema, query scoping, dead-code confirmation). Implementing next. |
+| P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | PR OPEN, **CodeRabbit rate-limited** (~39min cooldown hit 2026-07-02 ~09:20) | [#11](https://github.com/tomnguyen103/medical-supply-monitor/pull/11) | Implementation done, 68/68 tests green locally, CI green. Posted `@coderabbitai rate limit` per workflow rules; will retry `@coderabbitai review` after cooldown. Not "hours away" so continuing rather than fully pausing — using the wait for P3 research. See "P2 details". |
 | P3 alert-loop-reliability | `fix/alert-loop-reliability` | TODO | — | |
 | P4 signal-lifecycle-and-matching | `fix/signal-lifecycle-and-matching` | TODO | — | |
 | P5 import-integrity | `fix/import-integrity` | TODO | — | |
@@ -131,11 +131,40 @@ CodeRabbit found one real Minor issue (missing `persist-credentials: false`
 on the checkout step) — fixed, pushed, re-reviewed, confirmed addressed.
 Merged via `gh pr merge 10 --squash --delete-branch`.
 
-## Findings register status (A1–A25)
+## P2 details (2026-07-02) — PR #11, awaiting merge
+
+Implemented as planned in "P2 research notes" below, plus one unplanned but
+necessary addition: **the isolation tests found a real, previously-unknown
+bug**, not a re-verification of an existing audit finding. `loadLatestSnapshots`
+(in both `alerts/engine.ts:329` and its duplicate `ai/graph.ts:667`) builds a
+join whose ON clause references an unqualified `computed_at` that's ambiguous
+between the outer `risk_snapshots` table and a subquery aliased column also
+named `computed_at`. Real Postgres (confirmed via pglite, which embeds actual
+Postgres source — this is standard SQL name resolution, not an emulation
+quirk) rejects this at parse time with error 42702, **unconditionally, for
+every organizationId, including ones with zero rows** — this is not a
+data-dependent edge case. Fixed by renaming the subquery's SQL-level alias
+from `"computed_at"` to `"max_computed_at"` in both files (one-line change
+each). Logging this as **A26** (new finding, discovered via testing, not in
+the original 2026-07-02 audit) — flagged in the PR body for closer attention
+during P3, since if this has been live it would explain why alert
+evaluation may have never actually produced output (ties to A4/A7/A8's
+silent-failure findings in the same pipeline — worth checking during P3
+whether this exception was ever surfaced anywhere or just silently eaten).
+
+Also updated `docs/DEPLOYMENT.md`'s Clerk-setup step (the "known gap" note
+from P1) now that the gap it described is fixed.
+
+Gates: lint/typecheck clean, build succeeds, full suite 68/68 passing (9 net
+new: 5 isolation + 4 lazy-upsert, minus 2 removed from hardening.test.ts),
+run 3x consecutively with identical results.
+
+## Findings register status (A1–A26)
 
 - **A1: FIXED** (see P0 details above — working tree restored, no PR needed).
 - **A3: FIXED** (PR #10, merged — see P1 details above).
-- A2, A4–A25: not yet re-verified. Will re-verify each at its current file:line immediately before its phase, per campaign rules (lines may have drifted).
+- **A2: FIXED, A10: FIXED, A26 (new): FIXED** (PR #11, pending merge — see P2 details above).
+- A4–A9, A11–A25: not yet re-verified. Will re-verify each at its current file:line immediately before its phase, per campaign rules (lines may have drifted).
 
 ## P2 research notes (2026-07-02, pre-implementation)
 
