@@ -49,7 +49,7 @@ permissions to remove the need for this workaround.
 | P1 ci-gates | `chore/ci-gates` | **DONE — MERGED** | [#10](https://github.com/tomnguyen103/medical-supply-monitor/pull/10) | CI verified green on real GitHub Actions (not just locally). One CodeRabbit finding (missing `persist-credentials: false`), fixed and confirmed "✅ Addressed" before merge. See "P1 details". |
 | P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | **DONE — MERGED** | [#11](https://github.com/tomnguyen103/medical-supply-monitor/pull/11) | Survived a CodeRabbit rate-limit + 2 real fix rounds. Independent code-reviewer subagent also APPROVEd before merge. See "P2 details". |
 | P3 alert-loop-reliability | `fix/alert-loop-reliability` | PR OPEN, awaiting independent review + CodeRabbit | [#13](https://github.com/tomnguyen103/medical-supply-monitor/pull/13) | Implemented per the "P3 plan" below exactly. 24 new tests, 100/100 suite green, lint/typecheck/build clean. |
-| P4 signal-lifecycle-and-matching | `fix/signal-lifecycle-and-matching` | TODO | — | |
+| P4 signal-lifecycle-and-matching | `fix/signal-lifecycle-and-matching` | PR OPEN (draft), awaiting independent review + CodeRabbit | [#14](https://github.com/tomnguyen103/medical-supply-monitor/pull/14) | Implemented per "P4 research" below. Found + fixed one new bug beyond the 6 researched findings (A5a ordering). 27 new/changed tests, 88/88 suite green, lint/typecheck/build clean. See "P4 details". |
 | P5 import-integrity | `fix/import-integrity` | TODO | — | |
 | P6 cron-batching-and-indexes | `perf/cron-batching-and-indexes` | TODO | — | |
 | P7 hardening-and-dead-weight | `chore/hardening-and-dead-weight` | TODO | — | |
@@ -180,7 +180,8 @@ run 3x consecutively with identical results.
 - **A1: FIXED** (see P0 details above — working tree restored, no PR needed).
 - **A3: FIXED** (PR #10, merged — see P1 details above).
 - **A2: FIXED, A10: FIXED, A26 (new): FIXED** (PR #11, pending merge — see P2 details above).
-- A4–A9, A11–A25: not yet re-verified. Will re-verify each at its current file:line immediately before its phase, per campaign rules (lines may have drifted).
+- **A5a, A5b, A9, A20, A21, A23: FIXED** (PR #14, pending merge — see P4 details below).
+- A4, A6–A8, A11–A19, A22, A24–A25: not yet re-verified. Will re-verify each at its current file:line immediately before its phase, per campaign rules (lines may have drifted).
 
 ## P2 research notes (2026-07-02, pre-implementation)
 
@@ -406,6 +407,77 @@ re-verified against current code, confirmed accurate:
 `risk/snapshots.ts`) overlap with anything P3 touched — safe to branch P4
 off main immediately, no need to wait for PR #13 to merge first (unlike
 P3, which had to wait for P2).
+
+## P4 details (2026-07-02) — PR #14, awaiting review
+
+Implemented all 6 researched findings exactly as designed above, plus one
+new bug found while writing tests (same pattern as A26 in P2 — writing a
+real test for the *documented* behavior surfaced an *actual* bug the
+research pass didn't catch, because it required tracing execution order,
+not just reading the finding description):
+
+- **A20 (scoring):** `scoreSignalDomains` rewritten to rank-by-potential +
+  geometric diminishing returns (`ADDITIONAL_DOMAIN_FACTOR = 0.3` per
+  additional matched domain, strongest domain first) + running-budget
+  clamp to `SIGNAL_COMPONENT_CAP`. `SCORING_VERSION` bumped `v0.2.0` →
+  `v0.3.0`. Proved monotonic two ways: algebraically (worst case is a new
+  signal ranking first and displacing every existing domain down one
+  rank — shown in a code comment that the geometric ratio guarantees the
+  new leader's own contribution always exceeds what the demoted domains
+  collectively lose, independent of domain count or severity
+  distribution) and empirically (300-trial seeded-random property test in
+  `scoring.test.ts` asserting `after.riskScore >= before.riskScore` for
+  every trial). Updated the `scoring-input.json` fixture's expected values
+  (71→96, "high"→"critical") to match the new formula.
+- **A5b (dedupe key stability):** confirmed already fixed in both shortage
+  connectors' `dedupeKey` (stable identity only, no volatile status/date
+  fields) — added regression tests proving the key survives a re-fetch
+  with those fields changed, for both connectors.
+- **A5a (reconciliation) — new bug found:** implementing the "mark absent
+  signals resolved" pass (`reconcileResolvedSignals`, `persistence.ts`)
+  and wiring it into `pipeline.ts`'s `persistSignalsForTenants` surfaced a
+  real ordering bug: a signal was only recorded as "seen this run" *after*
+  a successful `upsertMatchedSignal` call. A signal that matched
+  correctly but hit a **transient DB write failure** would be silently
+  excluded from the seen-list, causing the very next line
+  (`reconcileResolvedSignals`) to wrongly mark it `"resolved"` even though
+  the source still actively reports it — exactly the class of harm A5a
+  exists to prevent, just from a different trigger (our own write
+  failure, not the source's data). Fixed: `seenDedupeKeys.push(...)` moved
+  to immediately after a successful match, before the persist attempt.
+  Covered by two test files: `persistence.test.ts` (DB-backed, tests
+  `reconcileResolvedSignals`'s contract directly against pglite) and
+  `pipeline.test.ts` (DB-backed with a mocked transient-failure injection
+  on one specific key, proving the ordering fix specifically).
+- **A9 (ambiguous country match):** `matching.ts`'s country fallback now
+  requires either exactly one same-country candidate or corroboration via
+  `signalCorroboratesSupplier` (checks supplier name appears in the
+  signal's title/summary/keywords) before resolving — no longer takes
+  `.find()`'s arbitrary first result among several candidates.
+- **A21 (substring false positives):** `containsWholeText` (word-boundary
+  regex) replaces raw `.includes()` for keyword/item-name matching.
+  Regression-tested against the exact failure mode described in the
+  finding (an item named "Glove" no longer matches inside "Gloversville").
+- **A23 (inventory freshness):** added `isInventoryFresh` /
+  `INVENTORY_FRESHNESS_WINDOW_DAYS` (30 days) to `snapshots.ts` — a stale
+  inventory row now contributes `daysOnHand: null` (treated as no-data)
+  instead of silently driving the score indefinitely. Both the pure
+  boundary logic and the DB-backed integration behavior (via
+  `loadTenantScoreInputs`, exported for testability) are covered.
+
+**Exports added for testability** (same pattern as P2's `loadLatestSnapshots`):
+`persistSignalsForTenants` (`pipeline.ts`), `loadTenantScoreInputs`,
+`isInventoryFresh`, `INVENTORY_FRESHNESS_WINDOW_DAYS` (`snapshots.ts`).
+
+**Gates:** `npm run typecheck` clean, `npx vitest run` 88/88 passing
+across 14 files (27 new/changed test cases: 5 in `scoring.test.ts`, 4 in
+`matching.test.ts`, 2 in `normalization.test.ts`, 4 in new
+`persistence.test.ts`, 2 in new `pipeline.test.ts`, 5 in new
+`snapshots.test.ts`), `npx eslint src` clean, `npm run build` succeeds.
+Independent code-reviewer subagent dispatched with `isolation: "worktree"`
+(learned from the P3 git-race incident — avoids sharing the working
+directory with a background reviewer entirely rather than relying on
+discipline not to `git checkout` concurrently).
 
 ## Human gates hit
 
