@@ -51,10 +51,11 @@ export async function getOrgContext(): Promise<OrgContext | null> {
 }
 
 /**
- * Lazily mirrors a Clerk organization into our `organizations` table on its
- * first authenticated hit. Real tenants only ever get a Clerk org, not a row
- * here, until this runs — see A2 in the health-audit findings register.
- * Never throws: a DB or Clerk-API hiccup here must not block sign-in.
+ * Lazily mirrors a Clerk organization into our `organizations` table.
+ * Checked on every authenticated hit (one indexed PK lookup) but only
+ * written once, on the first hit for a given org — see A2 in the
+ * health-audit findings register. Never throws: a DB or Clerk-API hiccup
+ * here must not block sign-in.
  */
 async function ensureOrganization(orgId: string, orgSlug: string | null): Promise<void> {
   try {
