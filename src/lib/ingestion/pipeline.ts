@@ -18,7 +18,7 @@ import {
   matchSignalToCatalog,
   type TenantCatalog,
 } from "./matching";
-import { upsertMatchedSignal } from "./persistence";
+import { reconcileResolvedSignals, upsertMatchedSignal } from "./persistence";
 
 export interface IngestionRunOptions {
   connectorIds?: string[];
@@ -38,6 +38,9 @@ export interface IngestionConnectorSummary {
   matched: number;
   persisted: number;
   failed: number;
+  /** Previously-active signals for this org+source no longer present in
+   * this fetch, now marked "resolved". */
+  resolved: number;
   error?: string;
 }
 
@@ -49,6 +52,7 @@ export interface IngestionRunSummary {
   matched: number;
   persisted: number;
   failed: number;
+  resolved: number;
   connectors: IngestionConnectorSummary[];
 }
 
@@ -76,6 +80,7 @@ export async function runRiskIngestion(
         timeoutMs: options.timeoutMs ?? CONNECTOR_FETCH_TIMEOUT_MS,
       });
       const result = await persistSignalsForTenants(
+        connector.id,
         signals,
         tenantIds,
         options.tenantBatchSize ?? INGESTION_TENANT_BATCH_SIZE,
@@ -87,6 +92,7 @@ export async function runRiskIngestion(
         matched: result.matched,
         persisted: result.persisted,
         failed: result.failed,
+        resolved: result.resolved,
       });
     } catch (error) {
       summaries.push({
@@ -95,6 +101,7 @@ export async function runRiskIngestion(
         matched: 0,
         persisted: 0,
         failed: 0,
+        resolved: 0,
         error: error instanceof Error ? error.message : "Connector failed.",
       });
     }
@@ -107,6 +114,7 @@ export async function runRiskIngestion(
     matched: summaries.reduce((sum, row) => sum + row.matched, 0),
     persisted: summaries.reduce((sum, row) => sum + row.persisted, 0),
     failed: summaries.reduce((sum, row) => sum + row.failed, 0),
+    resolved: summaries.reduce((sum, row) => sum + row.resolved, 0),
     connectors: summaries,
   };
 }
@@ -159,25 +167,32 @@ async function fetchConnectorSignals(
   }
 }
 
-async function persistSignalsForTenants(
+export async function persistSignalsForTenants(
+  source: string,
   signals: NormalizedRiskSignal[],
   tenantIds: string[],
   tenantBatchSize: number,
   abortSignal?: AbortSignal,
-): Promise<{ matched: number; persisted: number; failed: number }> {
+): Promise<{ matched: number; persisted: number; failed: number; resolved: number }> {
   let matched = 0;
   let persisted = 0;
   let failed = 0;
+  let resolved = 0;
 
   for (const tenantBatch of chunk(tenantIds, tenantBatchSize)) {
     ensureNotAborted(abortSignal);
     const catalogs = await Promise.all(tenantBatch.map((id) => loadTenantCatalog(id)));
     for (const catalog of catalogs) {
+      const seenDedupeKeys: string[] = [];
       for (const riskSignal of signals) {
         ensureNotAborted(abortSignal);
         const match = matchSignalToCatalog(riskSignal, catalog);
         if (!match) continue;
         matched += 1;
+        // Recorded as "seen" as soon as it matches, before the persist
+        // attempt below - a transient write failure must not make
+        // reconciliation treat a still-source-reported signal as gone.
+        seenDedupeKeys.push(riskSignal.dedupeKey);
         try {
           ensureNotAborted(abortSignal);
           await upsertMatchedSignal(riskSignal, match);
@@ -186,10 +201,18 @@ async function persistSignalsForTenants(
           failed += 1;
         }
       }
+      // Reconcile even when nothing matched this tenant this run — a
+      // previously-matched signal that no longer matches (source resolved
+      // it, or the catalog changed) should stop being reported "active".
+      resolved += await reconcileResolvedSignals(
+        catalog.organizationId,
+        source,
+        seenDedupeKeys,
+      );
     }
   }
 
-  return { matched, persisted, failed };
+  return { matched, persisted, failed, resolved };
 }
 
 async function loadTenantIds(): Promise<string[]> {
@@ -282,6 +305,7 @@ function emptySummary(
     matched: 0,
     persisted: 0,
     failed: 0,
+    resolved: 0,
     connectors: [],
   };
 }

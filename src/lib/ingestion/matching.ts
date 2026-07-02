@@ -102,9 +102,18 @@ export function matchSignalToCatalog(
 
   const country = normalizeCountry(signal.matchHints?.countryCode);
   if (country) {
-    const supplierByCountry = catalog.suppliers.find(
+    const suppliersByCountry = catalog.suppliers.filter(
       (candidate) => normalizeCountry(candidate.countryOfOrigin) === country,
     );
+    // A bare country match is only trustworthy when it's unambiguous (one
+    // candidate) or independently corroborated by keyword/text mentioning
+    // that specific supplier — otherwise picking .find()'s first result
+    // among several same-country suppliers is an arbitrary guess.
+    const corroborated = suppliersByCountry.find((candidate) =>
+      signalCorroboratesSupplier(signal, candidate),
+    );
+    const supplierByCountry =
+      corroborated ?? (suppliersByCountry.length === 1 ? suppliersByCountry[0] : undefined);
     if (supplierByCountry) {
       return {
         organizationId: catalog.organizationId,
@@ -157,6 +166,25 @@ function findSupplier(
   });
 }
 
+function signalCorroboratesSupplier(
+  signal: NormalizedRiskSignal,
+  supplier: CatalogSupplier,
+): boolean {
+  const supplierName = normalizeText(supplier.name);
+  if (supplierName.length < 4) return false;
+  const texts = [
+    signal.matchHints?.supplierName,
+    signal.title,
+    signal.summary,
+    ...(signal.matchHints?.keywords ?? []),
+  ]
+    .map(normalizeText)
+    .filter((value) => value.length >= 4);
+  return texts.some(
+    (text) => containsWholeText(text, supplierName) || containsWholeText(supplierName, text),
+  );
+}
+
 function findItemByKeyword(
   signal: NormalizedRiskSignal,
   catalog: TenantCatalog,
@@ -174,9 +202,9 @@ function findItemByKeyword(
     const sku = normalizeText(item.internalSku);
     return keywords.some(
       (keyword) =>
-        itemName.includes(keyword) ||
-        keyword.includes(itemName) ||
-        (sku.length >= 4 && keyword.includes(sku)),
+        containsWholeText(itemName, keyword) ||
+        containsWholeText(keyword, itemName) ||
+        (sku.length >= 4 && containsWholeText(keyword, sku)),
     );
   });
 }
@@ -200,4 +228,18 @@ function normalizeText(value: string | undefined | null): string {
     )
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Whole-token containment: true only when `needle` appears in `haystack` on
+ * word boundaries, not as a bare substring inside a longer unrelated word
+ * (e.g. a 4+ char keyword like "cardiac" should not match inside some other
+ * compound word that happens to contain those letters). Both inputs are
+ * assumed already normalizeText()-ed (lowercase, alphanumeric + single
+ * spaces only), so no regex-special characters can survive to need
+ * escaping.
+ */
+function containsWholeText(haystack: string, needle: string): boolean {
+  if (!needle || !haystack) return false;
+  return new RegExp(`(?:^|\\s)${needle}(?:\\s|$)`).test(haystack);
 }

@@ -4,6 +4,10 @@ import cisaKev from "./__fixtures__/cisa-kev.json";
 import openFdaShortage from "./__fixtures__/openfda-drug-shortage.json";
 import openFdaDeviceRecall from "./__fixtures__/openfda-device-recall.json";
 import { normalizeCisaKev } from "./cisa-kev";
+import {
+  normalizeFdaDeviceShortage,
+  type FdaDeviceShortageRow,
+} from "./fda-device-shortages";
 import { normalizeOpenFdaDrugShortage } from "./openfda-drug-shortages";
 import { normalizeOpenFdaRecall } from "./openfda-recalls";
 
@@ -55,5 +59,77 @@ describe("connector normalization", () => {
         supplierName: "Microsoft",
       },
     });
+  });
+
+  it("normalizes FDA device shortage rows with device-name keyword hints", () => {
+    const row: FdaDeviceShortageRow = {
+      device: "IV Infusion Pump Set",
+      productCodes: ["FRN"],
+      reason: "Increased demand",
+      status: "Current shortage",
+      updatedAt: new Date("2026-06-20T00:00:00Z"),
+    };
+    const signal = normalizeFdaDeviceShortage(row, fetchedAt);
+    expect(signal).toMatchObject({
+      source: "fda_device_shortage",
+      domain: "shortage",
+      entityType: "item",
+      entityId: "FRN",
+      severity: "high",
+      matchHints: {
+        keywords: ["IV Infusion Pump Set", "FRN"],
+      },
+    });
+  });
+});
+
+describe("connector dedupeKey stability across re-fetches (A5b)", () => {
+  it("openFDA drug shortage: keeps the same dedupeKey when status/availability/date change between fetches", () => {
+    const firstFetch = normalizeOpenFdaDrugShortage(
+      {
+        ...openFdaShortage,
+        status: "Current",
+        availability: "Limited availability",
+        update_date: "2026-06-01",
+      },
+      fetchedAt,
+    );
+    const secondFetch = normalizeOpenFdaDrugShortage(
+      {
+        ...openFdaShortage,
+        status: "Resolved",
+        availability: "Available",
+        update_date: "2026-06-25",
+      },
+      new Date("2026-06-25T09:00:00Z"),
+    );
+
+    expect(firstFetch?.dedupeKey).toBeTruthy();
+    expect(secondFetch?.dedupeKey).toBe(firstFetch?.dedupeKey);
+  });
+
+  it("FDA device shortage: keeps the same dedupeKey when status/reason/date change between fetches", () => {
+    const firstFetch = normalizeFdaDeviceShortage(
+      {
+        device: "IV Infusion Pump Set",
+        productCodes: ["FRN"],
+        status: "Current shortage",
+        reason: "Increased demand",
+        updatedAt: new Date("2026-06-01T00:00:00Z"),
+      },
+      fetchedAt,
+    );
+    const secondFetch = normalizeFdaDeviceShortage(
+      {
+        device: "IV Infusion Pump Set",
+        productCodes: ["FRN"],
+        status: "Resolved",
+        reason: "Supply restored",
+        updatedAt: new Date("2026-06-25T00:00:00Z"),
+      },
+      new Date("2026-06-25T09:00:00Z"),
+    );
+
+    expect(secondFetch.dedupeKey).toBe(firstFetch.dedupeKey);
   });
 });

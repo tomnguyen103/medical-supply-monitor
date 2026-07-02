@@ -116,7 +116,10 @@ export function normalizeFdaDeviceShortage(
       status: row.status,
       updatedAt: row.updatedAt?.toISOString(),
     },
-    dedupeKey: stableKey(row.device, code, row.updatedAt?.toISOString().slice(0, 10)),
+    // Stable identity only — NOT updatedAt, which changes as FDA revises the
+    // SAME device shortage record over time (same reasoning as the drug
+    // shortages connector).
+    dedupeKey: stableKey(row.device, code),
     matchHints: {
       keywords: [row.device, ...row.productCodes].filter(Boolean),
     },

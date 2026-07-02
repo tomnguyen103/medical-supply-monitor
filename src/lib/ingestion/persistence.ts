@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -71,6 +71,38 @@ export async function upsertMatchedSignal(
   }
 
   return { signalId: row.id, evidenceId };
+}
+
+/**
+ * Marks an org's "active" signals for this source resolved when they're no
+ * longer present in the latest fetch (their dedupeKey wasn't matched+
+ * persisted this run). Relies on dedupeKey being a STABLE identity, not a
+ * volatile field — a signal that's still genuinely active always keeps the
+ * same key across runs, so anything absent really is gone (resolved),
+ * not just relabeled. Call only after a successful fetch for this
+ * (organizationId, source) — an empty `seenDedupeKeys` from a genuinely
+ * failed/aborted fetch would otherwise wrongly resolve everything.
+ */
+export async function reconcileResolvedSignals(
+  organizationId: string,
+  source: string,
+  seenDedupeKeys: string[],
+): Promise<number> {
+  const rows = await db
+    .update(riskSignals)
+    .set({ status: "resolved" })
+    .where(
+      and(
+        eq(riskSignals.organizationId, organizationId),
+        eq(riskSignals.source, source),
+        eq(riskSignals.status, "active"),
+        seenDedupeKeys.length > 0
+          ? notInArray(riskSignals.dedupeKey, seenDedupeKeys)
+          : undefined,
+      ),
+    )
+    .returning({ id: riskSignals.id });
+  return rows.length;
 }
 
 function toRiskSignalValues(
