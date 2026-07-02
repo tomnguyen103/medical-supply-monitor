@@ -48,7 +48,7 @@ permissions to remove the need for this workaround.
 | P0 restore-tree | (none — working-tree-only fix) | **DONE** | — (no diff vs main; see below) | Discarded corruption via `git stash`, not a commit. See "P0 details". |
 | P1 ci-gates | `chore/ci-gates` | **DONE — MERGED** | [#10](https://github.com/tomnguyen103/medical-supply-monitor/pull/10) | CI verified green on real GitHub Actions (not just locally). One CodeRabbit finding (missing `persist-credentials: false`), fixed and confirmed "✅ Addressed" before merge. See "P1 details". |
 | P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | **DONE — MERGED** | [#11](https://github.com/tomnguyen103/medical-supply-monitor/pull/11) | Survived a CodeRabbit rate-limit + 2 real fix rounds. Independent code-reviewer subagent also APPROVEd before merge. See "P2 details". |
-| P3 alert-loop-reliability | `fix/alert-loop-reliability` | TODO — branch now (main has P2's fix) | — | Full research + design already recorded below ("P3 plan"). |
+| P3 alert-loop-reliability | `fix/alert-loop-reliability` | PR OPEN, awaiting independent review + CodeRabbit | [#13](https://github.com/tomnguyen103/medical-supply-monitor/pull/13) | Implemented per the "P3 plan" below exactly. 24 new tests, 100/100 suite green, lint/typecheck/build clean. |
 | P4 signal-lifecycle-and-matching | `fix/signal-lifecycle-and-matching` | TODO | — | |
 | P5 import-integrity | `fix/import-integrity` | TODO | — | |
 | P6 cron-batching-and-indexes | `perf/cron-batching-and-indexes` | TODO | — | |
