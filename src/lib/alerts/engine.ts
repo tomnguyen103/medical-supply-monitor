@@ -640,7 +640,10 @@ async function insertAlertEvent({
  * rule+snapshot+channel is atomically reset to "queued" and retried; a
  * `sent`/`suppressed`/`awaiting_approval` row is left alone. The `setWhere`
  * condition makes this a single atomic upsert — no separate SELECT, no
- * race between concurrent evaluation runs.
+ * race between concurrent evaluation runs. Pre-existing gap, unchanged by
+ * this function: a row stuck in "queued" (process crash between insert and
+ * delivery) is not retried either, since the conflict WHERE only matches
+ * "failed" — same crash window that existed before this PR.
  */
 async function insertOrRetryQueuedAlertEvent({
   organizationId,

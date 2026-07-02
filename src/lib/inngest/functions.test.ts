@@ -68,10 +68,16 @@ describe("Inngest pipeline threshold gates (A4)", () => {
       ).toBe(false);
     });
 
-    it("is true when nothing was produced at all", () => {
+    it("is true when every considered item failed", () => {
       expect(
-        scoringTotallyFailed({ ok: false, tenants: 2, items: 0, snapshots: 0, changed: 0, failed: 0 }),
+        scoringTotallyFailed({ ok: false, tenants: 2, items: 5, snapshots: 0, changed: 0, failed: 5 }),
       ).toBe(true);
+    });
+
+    it("is false when there was simply nothing to score (e.g. a freshly onboarded org with an empty catalog) — not a failure", () => {
+      expect(
+        scoringTotallyFailed({ ok: true, tenants: 2, items: 0, snapshots: 0, changed: 0, failed: 0 }),
+      ).toBe(false);
     });
 
     it("is false for a graceful skip", () => {

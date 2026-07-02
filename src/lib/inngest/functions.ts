@@ -24,7 +24,13 @@ export function ingestionTotallyFailed(ingestion: IngestionRunSummary): boolean 
 
 export function scoringTotallyFailed(scoring: RiskScoringRunSummary): boolean {
   if (scoring.skipped) return false;
-  return scoring.tenants > 0 && scoring.items === 0 && scoring.snapshots === 0;
+  // Every considered item ends up in exactly one bucket — scoreTenant()
+  // increments either `snapshots` or `failed`, never neither (see
+  // src/lib/risk/snapshots.ts). So `items === 0` means "nothing to score"
+  // (e.g. a freshly onboarded org with no catalog yet) — NOT a failure, and
+  // must not trip this gate. Only `failed === items` (with items > 0) means
+  // everything that was attempted actually failed.
+  return scoring.items > 0 && scoring.failed === scoring.items;
 }
 
 export function alertsTotallyFailed(alerts: AlertEvaluationSummary): boolean {
@@ -96,7 +102,11 @@ export const dailyRiskRefresh = inngest.createFunction(
       }
 
       return {
-        ok: true,
+        // Reaching here already means no total-failure gate tripped; `ok`
+        // still reports whether every step was fully clean (no partial
+        // failures) vs. merely "not a systemic failure" — informational
+        // only, nothing in this codebase reads this return value today.
+        ok: ingestion.ok && scoring.ok && alerts.ok && ai.ok,
         ingestion,
         scoring,
         alerts,
