@@ -57,6 +57,20 @@ function widgetSignal(dedupeKey: string): NormalizedRiskSignal {
   };
 }
 
+function unrelatedSignal(dedupeKey: string): NormalizedRiskSignal {
+  return {
+    source: SOURCE,
+    domain: "shortage",
+    entityType: "item",
+    entityId: dedupeKey,
+    title: "Completely unrelated product line disruption",
+    severity: "moderate",
+    lastFetchedAt: new Date("2026-06-27T12:00:00Z"),
+    stalenessStatus: "fresh",
+    dedupeKey,
+  };
+}
+
 async function statusOf(dedupeKey: string): Promise<string | undefined> {
   const [row] = await testDb
     .select({ status: riskSignals.status })
@@ -137,5 +151,26 @@ describe("persistSignalsForTenants reconciliation wiring (A5a)", () => {
     expect(result.resolved).toBe(1);
     expect(await statusOf("key-present")).toBe("active");
     expect(await statusOf("key-gone")).toBe("resolved");
+  });
+
+  it("resolves a previously-active signal when this run's fetch matched nothing for the tenant", async () => {
+    await persistSignalsForTenants(SOURCE, [widgetSignal("key-orphaned")], [ORG], 25);
+    expect(await statusOf("key-orphaned")).toBe("active");
+
+    // The connector fetch succeeded and returned real signals, but none of
+    // them match this tenant's catalog - distinct from "the fetch itself
+    // returned zero signals" (a different code path: matchSignalToCatalog
+    // returns null for every signal here, vs. the `signals` array being
+    // empty to begin with).
+    const result = await persistSignalsForTenants(
+      SOURCE,
+      [unrelatedSignal("key-no-match")],
+      [ORG],
+      25,
+    );
+
+    expect(result.matched).toBe(0);
+    expect(result.resolved).toBe(1);
+    expect(await statusOf("key-orphaned")).toBe("resolved");
   });
 });
