@@ -32,14 +32,13 @@ done.
    - Copy `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY`.
    - Set the sign-in/up and redirect URLs to match `.env.example`
      (`/sign-in`, `/sign-up`, `/dashboard`).
-   - Known gap (tracked, not yet fixed as of this writing): creating a
-     Clerk organization does not yet create a row in our `organizations`
-     table by itself — today that row is only ever inserted by the demo
-     seeder (`src/lib/demo/workspace.ts`). A real tenant signing up will
-     authenticate successfully but hit empty/guarded data until this is
-     wired up. Don't rely on this checklist for that gap closing itself —
-     check the current state of `getOrgContext`
-     (`src/lib/auth/tenancy.ts`) before onboarding a real customer.
+   - The first authenticated request for a Clerk organization lazily
+     creates its row in our `organizations` table (`getOrgContext` in
+     `src/lib/auth/tenancy.ts`) — it fetches the org's name from Clerk's
+     backend API and upserts it, so no manual seeding is required for a
+     real tenant. If the Clerk API call fails transiently, the row is
+     still created (name falls back to the org slug/id) rather than
+     blocking sign-in.
 4. **Inngest Cloud** — create an app at https://app.inngest.com, copy
    `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`.
 5. **Set env vars in Vercel** — Project Settings → Environment Variables,
@@ -116,5 +115,5 @@ Organizations → Enable). Once enabled, users can create or be invited to an
 organization from Clerk's own UI (`<OrganizationSwitcher />` /
 `<CreateOrganization />` components, or the Clerk-hosted account portal).
 This app reads the active organization from the Clerk session
-(`auth().orgId`) — see the "Known gap" note in step 3 above for what that
-does and doesn't wire up on our side today.
+(`auth().orgId`) — see step 3 above for how that organization's row in our
+own database gets created (lazily, on first authenticated hit).

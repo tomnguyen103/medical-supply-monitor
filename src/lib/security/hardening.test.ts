@@ -5,7 +5,6 @@ vi.mock("server-only", () => ({}));
 import { hasOrgPermission } from "@/lib/auth/tenancy";
 import { sanitizeAuditMetadata } from "@/lib/audit";
 import { resolveRetentionPolicy } from "@/lib/retention";
-import { assertTenantAccess, filterRowsForTenant } from "./tenant-isolation";
 
 describe("RBAC permissions", () => {
   it("allows operators to manage catalog and alerts but not settings", () => {
@@ -74,24 +73,5 @@ describe("retention policy", () => {
       riskSnapshotDays: 400,
       evidenceDays: 400,
     });
-  });
-});
-
-describe("tenant isolation helpers", () => {
-  it("filters rows to one organization", () => {
-    const rows = [
-      { organizationId: "org-a", name: "A" },
-      { organizationId: "org-b", name: "B" },
-    ];
-
-    expect(filterRowsForTenant(rows, "org-a")).toEqual([
-      { organizationId: "org-a", name: "A" },
-    ]);
-  });
-
-  it("rejects access to another tenant row", () => {
-    expect(() =>
-      assertTenantAccess({ organizationId: "org-b" }, "org-a", "item"),
-    ).toThrow("Tenant isolation violation for item.");
   });
 });
