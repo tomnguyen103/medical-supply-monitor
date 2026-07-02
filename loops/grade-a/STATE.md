@@ -9,7 +9,7 @@ health-audit lanes" campaign. Read this FIRST every run. Plan doc:
 
 - Started: 2026-07-02
 - Base commit at campaign start: `421d2bc` (feat(landing): rebuild marketing page as premium "Resilience Desk" design) — confirmed green (lint/typecheck/build/test) before any campaign work.
-- Merged PR count so far: 1 / 12 (hard budget)
+- Merged PR count so far: 2 / 12 (hard budget)
 - Consecutive gate-failure count (current phase): 0
 
 **Local `npm run lint` / `eslint .` pollution (discovered during P2, not a
@@ -47,8 +47,8 @@ permissions to remove the need for this workaround.
 |---|---|---|---|---|
 | P0 restore-tree | (none — working-tree-only fix) | **DONE** | — (no diff vs main; see below) | Discarded corruption via `git stash`, not a commit. See "P0 details". |
 | P1 ci-gates | `chore/ci-gates` | **DONE — MERGED** | [#10](https://github.com/tomnguyen103/medical-supply-monitor/pull/10) | CI verified green on real GitHub Actions (not just locally). One CodeRabbit finding (missing `persist-credentials: false`), fixed and confirmed "✅ Addressed" before merge. See "P1 details". |
-| P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | PR OPEN, **CodeRabbit rate-limited** (~39min cooldown hit 2026-07-02 ~09:20) | [#11](https://github.com/tomnguyen103/medical-supply-monitor/pull/11) | Implementation done, 68/68 tests green locally, CI green. Posted `@coderabbitai rate limit` per workflow rules; will retry `@coderabbitai review` after cooldown. Not "hours away" so continuing rather than fully pausing — using the wait for P3 research. See "P2 details". |
-| P3 alert-loop-reliability | `fix/alert-loop-reliability` | TODO | — | |
+| P2 org-onboarding-and-isolation-tests | `feat/org-onboarding-and-isolation-tests` | **DONE — MERGED** | [#11](https://github.com/tomnguyen103/medical-supply-monitor/pull/11) | Survived a CodeRabbit rate-limit + 2 real fix rounds. Independent code-reviewer subagent also APPROVEd before merge. See "P2 details". |
+| P3 alert-loop-reliability | `fix/alert-loop-reliability` | TODO — branch now (main has P2's fix) | — | Full research + design already recorded below ("P3 plan"). |
 | P4 signal-lifecycle-and-matching | `fix/signal-lifecycle-and-matching` | TODO | — | |
 | P5 import-integrity | `fix/import-integrity` | TODO | — | |
 | P6 cron-batching-and-indexes | `perf/cron-batching-and-indexes` | TODO | — | |
@@ -198,6 +198,7 @@ Re-verified against current code (post-P1 main):
 
 - 2026-07-02: P0 — reverted entire 21-file restyle set to HEAD (incoherent: depends on undefined CSS from the unrecoverable globals.css). Did not recreate `auth-appearance.ts` (would be dead code — zero importers once restyle reverted). Both are deviations from the campaign doc's literal P0 text, justified by re-verification evidence above; human can veto by popping `stash@{0}` and overriding.
 - 2026-07-02: P0 produced no PR (zero diff vs already-green main). Treating "phase counts only when MERGED" as satisfied by the tree already matching main — no merge action exists to take.
+- 2026-07-02: P2 (PR #11) — dismissed 2 CodeRabbit nitpicks rather than fixing: (1) "deduplicate `loadLatestSnapshots`" (graph.ts/engine.ts) — correctly deferred to P7 per the campaign's own phase split (the P3 plan below already documented this exact deferral before CodeRabbit flagged it independently). (2) "tenancy.test.ts test 2 depends on test 1's insert order" — CodeRabbit's own labels were "Trivial" + "Low value"; real but minor test-hygiene point, not worth scope creep in a PR about org onboarding. Both actionable (non-nitpick) findings were fixed and confirmed "✅ Addressed in commit 3b12f68" before merge. Also discovered mid-review: CodeRabbit's `auto_incremental_review: false` means pushing a new commit alone never triggers a review — every fix round needs an explicit `@coderabbitai review` comment, and even that sometimes bounces back "does not re-review already reviewed commits" while still updating existing comment threads to "✅ Addressed" in the background. Lesson: always verify via the actual comment `updated_at` timestamps and body text, never trust the `gh pr checks` "pass" status alone (it reads the same regardless of whether a real review, a skip, or a rate-limit bounce produced it).
 
 ## P3 plan (researched 2026-07-02, not yet implemented — waiting for P2 to merge)
 
