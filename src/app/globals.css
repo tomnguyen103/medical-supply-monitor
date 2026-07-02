@@ -43,7 +43,6 @@
   /* Command Console — dashboard/app instrument-rail tokens. */
   --console-rail: var(--ink);
   --console-line: oklch(0.52 0.085 184 / 0.35);
-  --console-surface-1: oklch(0.52 0.085 184 / 0.07);
   --console-surface-2: oklch(0.52 0.085 184 / 0.14);
 
   /*
@@ -120,7 +119,6 @@
 
   --color-console-rail: var(--console-rail);
   --color-console-line: var(--console-line);
-  --color-console-surface-1: var(--console-surface-1);
   --color-console-surface-2: var(--console-surface-2);
 
   /* Marketing-surface palette (utilities: bg-paper, text-ink, border-hairline…) */
@@ -420,6 +418,8 @@
   .console-card-hover:hover {
     transform: translateY(-2px);
     border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+    /* Re-declares .console-panel's full shadow stack (not layered on top of
+     * it) — keep the inset highlight in sync if that base stack changes. */
     box-shadow:
       inset 0 1px 0 color-mix(in oklch, white 35%, transparent),
       0 30px 60px -28px color-mix(in oklch, black 45%, transparent),
