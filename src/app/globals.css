@@ -42,8 +42,8 @@
 
   /* Command Console — dashboard/app instrument-rail tokens. */
   --console-rail: var(--ink);
-  --console-line: oklch(0.52 0.085 184 / 0.35);
-  --console-surface-2: oklch(0.52 0.085 184 / 0.14);
+  --console-line: color-mix(in oklch, var(--primary) 35%, transparent);
+  --console-surface-2: color-mix(in oklch, var(--primary) 14%, transparent);
 
   /*
    * Marketing surface ("The Resilience Desk") — a controlled, gallery-grade

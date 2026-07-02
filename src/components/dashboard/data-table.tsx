@@ -67,7 +67,7 @@ export function DataTable<TData, TValue>({
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={filterPlaceholder}
               className="pl-9"
-              aria-label="Filter rows"
+              aria-label={filterPlaceholder.replace(/\.\.\.$/, "")}
             />
           </label>
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">

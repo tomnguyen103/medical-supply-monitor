@@ -208,7 +208,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                         Domain
                         <select
                           name="domain"
-                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm"
+                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                           defaultValue={rule.domain ?? "all"}
                         >
                           <option value="all">All domains</option>
@@ -223,7 +223,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                         Minimum severity
                         <select
                           name="minSeverity"
-                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm"
+                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                           defaultValue={rule.minSeverity}
                         >
                           {severityEnum.enumValues.map((severity) => (
