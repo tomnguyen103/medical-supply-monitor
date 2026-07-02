@@ -228,6 +228,10 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug"),
   plan: text("plan").notNull().default("free"),
+  /** Per-org alert delivery targets. Null falls back to env vars, but only
+   * outside production (see src/lib/alerts/delivery.ts). */
+  slackWebhookUrl: text("slack_webhook_url"),
+  alertEmail: text("alert_email"),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   ...timestamps(),
 });

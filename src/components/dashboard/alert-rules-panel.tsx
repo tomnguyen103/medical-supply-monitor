@@ -18,6 +18,34 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatLabel } from "@/lib/utils";
 
+// <form action={...}> requires a void-returning function; these actions now
+// return a typed AlertActionOutcome (A19), so wrap for this fire-and-forget
+// usage. Each needs its own "use server" — this file isn't a "use server" module.
+async function createRule(formData: FormData): Promise<void> {
+  "use server";
+  await createAlertRuleAction(formData);
+}
+
+async function runEvaluation(): Promise<void> {
+  "use server";
+  await runAlertEvaluationAction();
+}
+
+async function setEnabled(ruleId: string, enabled: boolean): Promise<void> {
+  "use server";
+  await setAlertRuleEnabledAction(ruleId, enabled);
+}
+
+async function deleteRule(ruleId: string): Promise<void> {
+  "use server";
+  await deleteAlertRuleAction(ruleId);
+}
+
+async function updateRule(ruleId: string, formData: FormData): Promise<void> {
+  "use server";
+  await updateAlertRuleAction(ruleId, formData);
+}
+
 export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -30,7 +58,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
             Match scored items by severity and optional risk domain.
           </p>
         </div>
-        <form action={createAlertRuleAction} className="space-y-4 p-5">
+        <form action={createRule} className="space-y-4 p-5">
           <label className="block text-sm font-medium">
             Name
             <Input name="name" className="mt-1" required placeholder="Critical shortages" />
@@ -128,7 +156,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
               Evaluation creates events with evidence, freshness, and confidence.
             </p>
           </div>
-          <form action={runAlertEvaluationAction}>
+          <form action={runEvaluation}>
             <Button type="submit" variant="outline" size="sm">
               <Play className="size-3.5" strokeWidth={1.75} />
               Evaluate
@@ -165,7 +193,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <form
-                      action={setAlertRuleEnabledAction.bind(
+                      action={setEnabled.bind(
                         null,
                         rule.id,
                         !rule.enabled,
@@ -175,7 +203,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                         {rule.enabled ? "Disable" : "Enable"}
                       </Button>
                     </form>
-                    <form action={deleteAlertRuleAction.bind(null, rule.id)}>
+                    <form action={deleteRule.bind(null, rule.id)}>
                       <Button type="submit" variant="ghost" size="icon">
                         <Trash2 className="size-4" strokeWidth={1.75} />
                         <span className="sr-only">Delete</span>
@@ -188,7 +216,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                     Edit rule
                   </summary>
                   <form
-                    action={updateAlertRuleAction.bind(null, rule.id)}
+                    action={updateRule.bind(null, rule.id)}
                     className="mt-4 space-y-4"
                   >
                     <label className="block text-sm font-medium">

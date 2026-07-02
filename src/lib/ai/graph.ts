@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import * as Sentry from "@sentry/nextjs";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Client as LangSmithClient } from "langsmith";
@@ -246,7 +247,10 @@ export async function runDailyBriefWorkflows(options: {
       runs += 1;
       if (result.status === "blocked") blocked += 1;
       if (result.status === "awaiting_human_approval") awaitingApproval += 1;
-    } catch {
+    } catch (error) {
+      Sentry.captureException(error, {
+        extra: { organizationId: org.id, phase: "daily-brief-workflow" },
+      });
       failed += 1;
     }
   }

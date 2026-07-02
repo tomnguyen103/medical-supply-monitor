@@ -1,5 +1,6 @@
 import "server-only";
 
+import * as Sentry from "@sentry/nextjs";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { getActiveConnectors, getConnector } from "@/lib/connectors/registry";
@@ -182,7 +183,15 @@ async function persistSignalsForTenants(
           ensureNotAborted(abortSignal);
           await upsertMatchedSignal(riskSignal, match);
           persisted += 1;
-        } catch {
+        } catch (error) {
+          Sentry.captureException(error, {
+            extra: {
+              organizationId: catalog.organizationId,
+              source: riskSignal.source,
+              entityId: riskSignal.entityId,
+              phase: "signal-persist",
+            },
+          });
           failed += 1;
         }
       }

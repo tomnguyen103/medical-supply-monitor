@@ -5,16 +5,26 @@ import { env, integrations } from "@/lib/env";
 
 export type DeliveryStatus = "sent" | "suppressed" | "failed";
 
+/** Per-org delivery targets. Falls back to global env vars, but only
+ * outside production — see resolveSlackWebhook/resolveAlertToEmail below. */
+export interface DeliveryTarget {
+  slackWebhookUrl?: string | null;
+  alertEmail?: string | null;
+}
+
 export interface DeliveryInput {
   channel: AlertChannel;
   title: string;
   body: string;
+  target?: DeliveryTarget;
 }
 
 export interface DeliveryResult {
   status: DeliveryStatus;
   error?: string;
 }
+
+const DELIVERY_TIMEOUT_MS = 10_000;
 
 export async function deliverAlert(input: DeliveryInput): Promise<DeliveryResult> {
   if (input.channel === "in_app") return { status: "sent" };
@@ -26,13 +36,38 @@ export async function deliverAlert(input: DeliveryInput): Promise<DeliveryResult
   };
 }
 
+function resolveSlackWebhook(target?: DeliveryTarget): string | undefined {
+  if (target?.slackWebhookUrl) return target.slackWebhookUrl;
+  return env.app.isProduction ? undefined : env.notifications.slackWebhookUrl;
+}
+
+function resolveAlertToEmail(target?: DeliveryTarget): string | undefined {
+  if (target?.alertEmail) return target.alertEmail;
+  return env.app.isProduction ? undefined : env.notifications.alertToEmail;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 async function deliverSlack(input: DeliveryInput): Promise<DeliveryResult> {
-  if (!integrations.slack || !env.notifications.slackWebhookUrl) {
+  const webhookUrl = resolveSlackWebhook(input.target);
+  if (!webhookUrl) {
     return { status: "suppressed", error: "Slack webhook is not configured." };
   }
 
   try {
-    const response = await fetch(env.notifications.slackWebhookUrl, {
+    const response = await fetchWithTimeout(webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -47,10 +82,12 @@ async function deliverSlack(input: DeliveryInput): Promise<DeliveryResult> {
       };
     }
     return { status: "sent" };
-  } catch {
+  } catch (error) {
     return {
       status: "failed",
-      error: "Slack delivery failed before receiving a response.",
+      error: isAbortError(error)
+        ? "Slack delivery timed out."
+        : "Slack delivery failed before receiving a response.",
     };
   }
 }
@@ -59,7 +96,8 @@ async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
   if (!integrations.resend || !env.notifications.resendApiKey) {
     return { status: "suppressed", error: "Resend is not configured." };
   }
-  if (!env.notifications.alertFromEmail || !env.notifications.alertToEmail) {
+  const toEmail = resolveAlertToEmail(input.target);
+  if (!env.notifications.alertFromEmail || !toEmail) {
     return {
       status: "suppressed",
       error: "Alert email sender or recipient is not configured.",
@@ -67,7 +105,7 @@ async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
   }
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         authorization: `Bearer ${env.notifications.resendApiKey}`,
@@ -75,7 +113,7 @@ async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
       },
       body: JSON.stringify({
         from: env.notifications.alertFromEmail,
-        to: [env.notifications.alertToEmail],
+        to: [toEmail],
         subject: input.title,
         text: input.body,
       }),
@@ -88,10 +126,12 @@ async function deliverEmail(input: DeliveryInput): Promise<DeliveryResult> {
       };
     }
     return { status: "sent" };
-  } catch {
+  } catch (error) {
     return {
       status: "failed",
-      error: "Resend delivery failed before receiving a response.",
+      error: isAbortError(error)
+        ? "Resend delivery timed out."
+        : "Resend delivery failed before receiving a response.",
     };
   }
 }
