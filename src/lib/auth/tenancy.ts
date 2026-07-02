@@ -1,6 +1,9 @@
 import "server-only";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 
+import { db, isDatabaseConfigured } from "@/lib/db";
+import { organizations } from "@/lib/db/schema";
 import { integrations } from "@/lib/env";
 
 /**
@@ -41,7 +44,45 @@ export async function getOrgContext(): Promise<OrgContext | null> {
   if (!integrations.clerk) return null;
   const { userId, orgId, orgRole, orgSlug } = await auth();
   if (!userId || !orgId) return null;
+  if (isDatabaseConfigured) {
+    await ensureOrganization(orgId, orgSlug ?? null);
+  }
   return { userId, orgId, orgRole: orgRole ?? null, orgSlug: orgSlug ?? null };
+}
+
+/**
+ * Lazily mirrors a Clerk organization into our `organizations` table on its
+ * first authenticated hit. Real tenants only ever get a Clerk org, not a row
+ * here, until this runs — see A2 in the health-audit findings register.
+ * Never throws: a DB or Clerk-API hiccup here must not block sign-in.
+ */
+async function ensureOrganization(orgId: string, orgSlug: string | null): Promise<void> {
+  try {
+    const existing = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    if (existing.length > 0) return;
+
+    let name = orgSlug ?? orgId;
+    let slug = orgSlug;
+    try {
+      const client = await clerkClient();
+      const org = await client.organizations.getOrganization({ organizationId: orgId });
+      name = org.name;
+      slug = org.slug || slug;
+    } catch (error) {
+      console.error(
+        `[tenancy] failed to fetch organization ${orgId} from Clerk; falling back to slug/id as name`,
+        error,
+      );
+    }
+
+    await db.insert(organizations).values({ id: orgId, name, slug }).onConflictDoNothing();
+  } catch (error) {
+    console.error(`[tenancy] failed to ensure organization row for ${orgId}`, error);
+  }
 }
 
 /**

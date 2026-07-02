@@ -672,7 +672,7 @@ async function loadLatestSnapshots(
   const latestSnapshot = db
     .select({
       itemId: riskSnapshots.itemId,
-      computedAt: sql<Date>`max(${riskSnapshots.computedAt})`.as("computed_at"),
+      computedAt: sql<Date>`max(${riskSnapshots.computedAt})`.as("max_computed_at"),
     })
     .from(riskSnapshots)
     .where(eq(riskSnapshots.organizationId, organizationId))
