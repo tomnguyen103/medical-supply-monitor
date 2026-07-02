@@ -479,6 +479,53 @@ Independent code-reviewer subagent dispatched with `isolation: "worktree"`
 directory with a background reviewer entirely rather than relying on
 discipline not to `git checkout` concurrently).
 
+## P4 review findings (2026-07-02)
+
+Independent code-reviewer subagent (isolation: worktree): **APPROVE**, no
+Critical or blocking Important findings. Verified the two things asked of
+it specifically: the A20 monotonicity proof holds (hand-traced + 800,000
+brute-force randomized/adversarial trials, zero counterexamples — well
+beyond this repo's own 300-trial property test), and the A5a ordering fix
+is real and load-bearing (proved by reverting it locally and watching the
+new `pipeline.test.ts` regression test fail exactly as expected, then
+pass again once restored).
+
+One Important finding, confirmed pre-existing and correctly out of this
+PR's stated scope (not a regression) — **logged as new findings for a
+later phase** rather than scope-creeping this PR:
+
+- **A27 (new): `matching.ts`'s `findSupplier` (~line 154) and
+  `findItemByKeyword` (~line 188) still resolve via a bare `.find()`
+  first-result with no ambiguity/corroboration guard** — the same
+  nondeterminism class A9 just fixed, but only for the country-fallback
+  path. Reviewer built a concrete repro: two suppliers both substring-
+  matching the same signal hint, where which one wins depends on
+  `loadTenantCatalog`'s `ORDER BY desc(updatedAt), ...` (`pipeline.ts`),
+  an order that can shift between runs if any unrelated row's
+  `updatedAt` changes. Fix should mirror A9's `signalCorroboratesSupplier`
+  guard pattern.
+- **A28 (new): `openfda-recalls.ts:132`'s `dedupeKey` still includes
+  `isoDateKey(reportDate)`** — the same volatile-key class A5b just fixed
+  in the drug-shortage and device-shortage connectors, in the third
+  shortage/recall connector that A5b's scope didn't cover.
+
+Minor suggestions noted for opportunistic pickup during P7 (hardening) or
+P8 (VERIFY), not tracked as numbered findings: `findSupplier` also lacks
+`containsWholeText`'s word-boundary check (A21's same reasoning, smaller
+risk given supplier names are more distinctive than keywords);
+`pipeline.ts`'s "resolve everything when nothing seen" branch
+(intentional, confirmed correct) has persistence-layer test coverage but
+no test exercising it end-to-end through `persistSignalsForTenants`
+specifically for "fetch succeeded but matched nothing for this tenant";
+`scoring.ts`'s sort comparator recomputes potential inline rather than
+memoizing (harmless at today's ~13-domain scale).
+
+**Decision:** A27/A28 deferred rather than fixed in this PR — same
+"don't scope-creep a phase PR" principle applied throughout the campaign
+(e.g. P2's CodeRabbit-dismissal decision above). Will pick up at P7 or
+get caught by P8's adversarial re-audit if not addressed sooner, whichever
+comes first.
+
 ## Human gates hit
 
 None yet.
