@@ -35,7 +35,7 @@ export default async function OverviewPage() {
       />
 
       {!integrations.database && (
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4">
+        <div className="flex items-start gap-3 rounded-2xl border border-border bg-muted/70 p-4">
           <TriangleAlert
             className="mt-0.5 size-5 shrink-0 text-muted-foreground"
             strokeWidth={1.75}
@@ -85,21 +85,24 @@ export default async function OverviewPage() {
 
 function NextSteps() {
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-5 py-4">
-        <h2 className="font-medium">What comes next</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Phase 7 hardening is in. Configure an organization to run the demo.
-        </p>
+    <div className="console-panel rounded-[1.75rem] p-1.5">
+      <div className="console-panel-inner overflow-hidden rounded-[1.25rem]">
+        <div className="border-b border-border/80 bg-muted/20 px-5 py-4">
+          <p className="console-label">Roadmap</p>
+          <h2 className="mt-2 font-semibold tracking-tight">What comes next</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Phase 7 hardening is in. Configure an organization to run the demo.
+          </p>
+        </div>
+        <ul className="divide-y divide-border/80">
+          {NEXT_STEPS.map((step) => (
+            <li key={step.phase} className="flex items-start gap-3 px-5 py-3.5">
+              <span className="mt-0.5 font-mono text-xs text-primary">{step.phase}</span>
+              <span className="text-sm text-muted-foreground">{step.text}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="divide-y divide-border">
-        {NEXT_STEPS.map((step) => (
-          <li key={step.phase} className="flex items-start gap-3 px-5 py-3">
-            <span className="mt-0.5 font-mono text-xs text-primary">{step.phase}</span>
-            <span className="text-sm text-muted-foreground">{step.text}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

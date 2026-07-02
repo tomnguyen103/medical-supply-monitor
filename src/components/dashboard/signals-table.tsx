@@ -23,9 +23,9 @@ export function SignalsTable({ data }: { data: SignalListRow[] }) {
         header: "Signal",
         cell: ({ row }) => (
           <div className="max-w-[32rem]">
-            <p className="font-medium">{row.original.title}</p>
+            <p className="font-semibold tracking-tight">{row.original.title}</p>
             {row.original.summary && (
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                 {row.original.summary}
               </p>
             )}
@@ -48,7 +48,7 @@ export function SignalsTable({ data }: { data: SignalListRow[] }) {
         cell: ({ row }) =>
           row.original.snapshot ? (
             <div className="flex items-center gap-2">
-              <span className="font-mono text-sm tabular-nums">
+              <span className="rounded-full bg-muted px-2.5 py-1 font-mono text-xs font-semibold tabular-nums">
                 {Math.round(row.original.snapshot.riskScore)}
               </span>
               <SeverityBadge level={row.original.snapshot.riskLevel} />
@@ -182,7 +182,7 @@ function EvidenceDrawer({
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-console-rail/55 backdrop-blur-sm"
         aria-label="Close evidence drawer"
         onClick={onClose}
       />
@@ -192,14 +192,14 @@ function EvidenceDrawer({
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
-        className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-background shadow-2xl outline-none"
+        className="absolute right-0 top-0 h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-background outline-none shadow-[0_0_80px_rgb(0_0_0/0.26)]"
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-background px-6 py-5">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-background/94 px-6 py-5 backdrop-blur-xl">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="console-label">
               Evidence review
             </p>
-            <h2 id={headingId} className="mt-1 text-lg font-semibold tracking-tight">
+            <h2 id={headingId} className="mt-2 text-xl font-semibold tracking-tight">
               {row.title}
             </h2>
           </div>
@@ -209,8 +209,9 @@ function EvidenceDrawer({
           </Button>
         </div>
 
-        <div className="space-y-6 px-6 py-5">
-          <section className="space-y-3">
+        <div className="space-y-6 px-5 py-5 sm:px-6">
+          <section className="console-panel rounded-[1.5rem] p-1.5">
+            <div className="console-panel-inner space-y-4 rounded-[1rem] p-5">
             <div className="flex flex-wrap items-center gap-2">
               <SeverityBadge level={row.severity} />
               <FreshnessBadge value={snapshot?.stalenessStatus ?? row.stalenessStatus} />
@@ -233,19 +234,21 @@ function EvidenceDrawer({
                 value={formatPercent(row.confidence)}
               />
             </dl>
+            </div>
           </section>
 
-          <section className="rounded-lg border border-border">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="font-medium">Score snapshot</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+          <section className="console-panel rounded-[1.5rem] p-1.5">
+            <div className="console-panel-inner overflow-hidden rounded-[1rem]">
+            <div className="border-b border-border bg-muted/25 px-5 py-4">
+              <h3 className="font-semibold tracking-tight">Score snapshot</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Deterministic score, version, freshness, and change metadata.
               </p>
             </div>
             {snapshot ? (
-              <div className="space-y-4 p-4">
+              <div className="space-y-5 p-5">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="font-mono text-3xl font-semibold tabular-nums">
+                  <span className="rounded-2xl border border-border bg-muted/55 px-4 py-2 font-mono text-4xl font-semibold tracking-[-0.06em] tabular-nums">
                     {Math.round(snapshot.riskScore)}
                   </span>
                   <SeverityBadge level={snapshot.riskLevel} />
@@ -267,11 +270,11 @@ function EvidenceDrawer({
                 <ChangeSummary summary={snapshot.changeSummary} />
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium">Component breakdown</h4>
-                  <div className="divide-y divide-border rounded-md border border-border">
+                  <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
                     {snapshot.components.map((component) => (
                       <div
                         key={component.factor}
-                        className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
+                        className="grid gap-2 bg-background/45 px-4 py-3 text-sm sm:grid-cols-[1fr_auto]"
                       >
                         <div>
                           <p className="font-medium">{formatLabel(component.factor)}</p>
@@ -288,23 +291,25 @@ function EvidenceDrawer({
                 </div>
               </div>
             ) : (
-              <p className="p-4 text-sm text-muted-foreground">
+              <p className="p-5 text-sm text-muted-foreground">
                 No score snapshot has been computed for this matched item yet.
               </p>
             )}
+            </div>
           </section>
 
-          <section className="rounded-lg border border-border">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="font-medium">Evidence artifacts</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+          <section className="console-panel rounded-[1.5rem] p-1.5">
+            <div className="console-panel-inner overflow-hidden rounded-[1rem]">
+            <div className="border-b border-border bg-muted/25 px-5 py-4">
+              <h3 className="font-semibold tracking-tight">Evidence artifacts</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Source evidence and computed score evidence stored for audit.
               </p>
             </div>
             <div className="divide-y divide-border">
               {row.evidence.length > 0 ? (
                 row.evidence.map((evidence) => (
-                  <div key={evidence.id} className="space-y-2 px-4 py-3 text-sm">
+                  <div key={evidence.id} className="space-y-2 px-5 py-4 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium">
@@ -335,11 +340,12 @@ function EvidenceDrawer({
                   </div>
                 ))
               ) : (
-                <p className="px-4 py-3 text-sm text-muted-foreground">
+                <p className="px-5 py-4 text-sm text-muted-foreground">
                   No stored evidence artifact yet. Source links still appear when
                   a connector provides them.
                 </p>
               )}
+            </div>
             </div>
           </section>
 
@@ -378,8 +384,10 @@ function Detail({
 }) {
   return (
     <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 font-medium">{value ?? muted}</dd>
+      <dt className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1 font-medium">{value ?? muted}</dd>
     </div>
   );
 }
@@ -396,7 +404,7 @@ function ChangeSummary({
     typeof summary.deltaScore === "number" ? summary.deltaScore.toFixed(1) : null;
 
   return (
-    <div className="rounded-md bg-muted px-3 py-2 text-sm">
+    <div className="rounded-2xl border border-border bg-muted/55 px-4 py-3 text-sm">
       <p className="font-medium">
         {changed ? "Changed since previous snapshot" : "No previous score change"}
       </p>

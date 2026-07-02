@@ -21,10 +21,12 @@ import { formatLabel } from "@/lib/utils";
 export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <section className="rounded-xl border border-border bg-card">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="font-medium">Create rule</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+      <section className="console-panel rounded-[1.75rem] p-1.5">
+        <div className="console-panel-inner overflow-hidden rounded-[1.25rem]">
+        <div className="border-b border-border/80 bg-muted/20 px-5 py-4">
+          <p className="console-label">Alert design</p>
+          <h2 className="mt-2 font-semibold tracking-tight">Create rule</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
             Match scored items by severity and optional risk domain.
           </p>
         </div>
@@ -46,7 +48,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
               Domain
               <select
                 name="domain"
-                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                 defaultValue="all"
               >
                 <option value="all">All domains</option>
@@ -61,7 +63,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
               Minimum severity
               <select
                 name="minSeverity"
-                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                 defaultValue="high"
               >
                 {severityEnum.enumValues.map((severity) => (
@@ -76,7 +78,10 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
             <legend className="text-sm font-medium">Channels</legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {alertChannelEnum.enumValues.map((channel) => (
-                <label key={channel} className="flex items-center gap-2 text-sm">
+                <label
+                  key={channel}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-background/45 px-3 py-2 text-sm"
+                >
                   <input
                     type="checkbox"
                     name="channels"
@@ -110,13 +115,16 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
           </div>
           <Button type="submit">Create rule</Button>
         </form>
+        </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+      <section className="console-panel rounded-[1.75rem] p-1.5">
+        <div className="console-panel-inner overflow-hidden rounded-[1.25rem]">
+        <div className="flex items-center justify-between gap-3 border-b border-border/80 bg-muted/20 px-5 py-4">
           <div>
-            <h2 className="font-medium">Rules</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="console-label">Delivery controls</p>
+            <h2 className="mt-2 font-semibold tracking-tight">Rules</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
               Evaluation creates events with evidence, freshness, and confidence.
             </p>
           </div>
@@ -128,11 +136,11 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
           </form>
         </div>
         {rules.length === 0 ? (
-          <p className="p-5 text-sm text-muted-foreground">
+          <p className="p-5 text-sm leading-6 text-muted-foreground">
             No rules yet. Daily in-app briefs still run after scoring snapshots exist.
           </p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border/80">
             {rules.map((rule) => (
               <div key={rule.id} className="space-y-4 p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -147,12 +155,12 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                     {rule.description && (
                       <p className="text-sm text-muted-foreground">{rule.description}</p>
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      {rule.domain ? formatLabel(rule.domain) : "All domains"} -{" "}
+                    <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                      {rule.domain ? formatLabel(rule.domain) : "All domains"} /{" "}
                       {rule.channels.length
                         ? rule.channels.map(formatLabel).join(", ")
                         : "In App"}{" "}
-                      - {rule.cooldownMinutes} min cooldown
+                      / {rule.cooldownMinutes} min cooldown
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
@@ -175,7 +183,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                     </form>
                   </div>
                 </div>
-                <details className="rounded-lg border border-border bg-background p-4">
+                <details className="rounded-2xl border border-border bg-background/55 p-4">
                   <summary className="cursor-pointer text-sm font-medium">
                     Edit rule
                   </summary>
@@ -200,7 +208,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                         Domain
                         <select
                           name="domain"
-                          className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                           defaultValue={rule.domain ?? "all"}
                         >
                           <option value="all">All domains</option>
@@ -215,7 +223,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                         Minimum severity
                         <select
                           name="minSeverity"
-                          className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          className="mt-1 h-10 w-full rounded-xl border border-input bg-background/80 px-3 text-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                           defaultValue={rule.minSeverity}
                         >
                           {severityEnum.enumValues.map((severity) => (
@@ -230,7 +238,10 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
                       <legend className="text-sm font-medium">Channels</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {alertChannelEnum.enumValues.map((channel) => (
-                          <label key={channel} className="flex items-center gap-2 text-sm">
+                          <label
+                            key={channel}
+                            className="flex items-center gap-2 rounded-xl border border-border bg-background/45 px-3 py-2 text-sm"
+                          >
                             <input
                               type="checkbox"
                               name="channels"
@@ -271,6 +282,7 @@ export function AlertRulesPanel({ rules }: { rules: AlertRule[] }) {
             ))}
           </div>
         )}
+        </div>
       </section>
     </div>
   );

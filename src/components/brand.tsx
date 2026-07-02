@@ -15,13 +15,20 @@ export function BrandMark({
   return (
     <Link
       href={href}
-      className={cn("inline-flex items-center gap-2 font-semibold", className)}
+      className={cn("group inline-flex items-center gap-2.5 font-semibold", className)}
     >
-      <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
-        <Radar className="size-4" />
+      <span className="grid size-8 place-items-center rounded-xl bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_12px_24px_-18px_rgb(14_79_77/0.8)] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-px">
+        <Radar className="size-4" strokeWidth={1.75} />
       </span>
       {showWordmark && (
-        <span className="text-sm tracking-tight">Supply Resilience Monitor</span>
+        <span className="flex flex-col leading-none">
+          <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Critical Supply
+          </span>
+          <span className="mt-1 text-sm tracking-tight">
+            Resilience Monitor
+          </span>
+        </span>
       )}
     </Link>
   );
