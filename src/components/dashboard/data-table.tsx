@@ -10,7 +10,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -53,15 +53,27 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className="space-y-3">
-      <Input
-        value={globalFilter}
-        onChange={(e) => setGlobalFilter(e.target.value)}
-        placeholder={filterPlaceholder}
-        className="max-w-xs"
-        aria-label="Filter rows"
-      />
-      <div className="rounded-xl border border-border bg-card">
+    <div className="console-panel rounded-[1.75rem] p-1.5">
+      <div className="console-panel-inner overflow-hidden rounded-[1.25rem]">
+        <div className="flex flex-col gap-3 border-b border-border/80 bg-muted/25 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative block w-full max-w-sm">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            <Input
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              placeholder={filterPlaceholder}
+              className="pl-9"
+              aria-label={filterPlaceholder.replace(/\.\.\.$/, "")}
+            />
+          </label>
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {table.getFilteredRowModel().rows.length} of {data.length} shown
+          </p>
+        </div>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -112,18 +124,15 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center text-muted-foreground"
+                  className="h-32 text-center text-muted-foreground"
                 >
-                  No results.
+                  No matching records.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {table.getFilteredRowModel().rows.length} of {data.length} shown
-      </p>
     </div>
   );
 }
@@ -156,7 +165,7 @@ function HeaderContent({
     <button
       type="button"
       onClick={onToggle}
-      className="-mx-2 inline-flex rounded-sm px-2 py-1 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="-mx-2 inline-flex rounded-md px-2 py-1 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       aria-label={sortButtonLabel(headerLabel, nextSortingOrder)}
     >
       {content}

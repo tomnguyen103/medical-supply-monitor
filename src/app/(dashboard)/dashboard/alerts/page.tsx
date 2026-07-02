@@ -44,10 +44,11 @@ async function AlertsContent({ organizationId }: { organizationId: string }) {
           body="Create a rule or run evaluation after scoring snapshots exist. Critical alerts wait for human approval before delivery."
         />
       ) : (
-        <section className="space-y-3">
+        <section className="space-y-4">
           <div>
-            <h2 className="font-medium">Event history</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="console-label">Delivery history</p>
+            <h2 className="mt-2 font-semibold tracking-tight">Event history</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
               Latest 100 events. Every alert and brief includes evidence, freshness, and confidence.
             </p>
           </div>

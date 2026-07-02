@@ -32,9 +32,9 @@ const columns: ColumnDef<AlertEventListRow>[] = [
     header: "Event",
     cell: ({ row }) => (
       <div className="max-w-[34rem]">
-        <p className="font-medium">{row.original.title}</p>
+        <p className="font-semibold tracking-tight">{row.original.title}</p>
         {row.original.body && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {row.original.body}
           </p>
         )}
@@ -97,7 +97,7 @@ const columns: ColumnDef<AlertEventListRow>[] = [
     cell: ({ row }) => (
       <details className="max-w-[20rem] text-xs">
         <summary className="cursor-pointer font-medium text-primary">View</summary>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-2 text-[11px] leading-5 text-muted-foreground">
+        <pre className="mt-2 max-h-48 overflow-auto rounded-2xl border border-border bg-muted/70 p-3 text-[11px] leading-5 text-muted-foreground">
           {JSON.stringify(
             {
               evidence: row.original.evidence,

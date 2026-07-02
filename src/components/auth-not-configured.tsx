@@ -12,9 +12,10 @@ import {
 export function AuthNotConfigured({ mode }: { mode: "sign-in" | "sign-up" }) {
   const label = mode === "sign-in" ? "Sign-in" : "Sign-up";
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-lg rounded-[1.75rem]">
       <CardHeader>
-        <CardTitle>Authentication is not configured</CardTitle>
+        <p className="console-label">Access control</p>
+        <CardTitle className="mt-2 text-xl">Authentication is not configured</CardTitle>
         <CardDescription>
           {label} is disabled because Clerk keys are not set in this environment.
         </CardDescription>
@@ -24,7 +25,7 @@ export function AuthNotConfigured({ mode }: { mode: "sign-in" | "sign-up" }) {
           Add your Clerk keys to <code className="font-mono">.env.local</code>,
           then restart the dev server:
         </p>
-        <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs text-foreground">
+        <pre className="overflow-x-auto rounded-2xl border border-border bg-muted/70 p-4 font-mono text-xs text-foreground">
           {`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
 CLERK_SECRET_KEY=...`}
         </pre>

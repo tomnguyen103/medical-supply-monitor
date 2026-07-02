@@ -6,11 +6,13 @@ export default function DashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="flex min-h-[100dvh]">
+    <div className="console-shell flex min-h-[100dvh]">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar clerkConfigured={integrations.clerkClient} />
-        <main className="mx-auto w-full max-w-6xl flex-1 p-6 lg:p-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+          <div className="console-enter">{children}</div>
+        </main>
       </div>
     </div>
   );
