@@ -18,11 +18,16 @@ import type {
 import type { RiskScoreComponent } from "@/lib/db/schema";
 
 /** Bump on any change to weights or formula. Snapshots pin this value. */
-export const SCORING_VERSION = "v0.2.0";
+export const SCORING_VERSION = "v0.3.0";
 
 const SIGNAL_COMPONENT_CAP = 65;
 const DAYS_ON_HAND_CAP = 20;
 const SOLE_SOURCE_CAP = 15;
+/** Each additional matched domain beyond the strongest contributes at this
+ * fraction of the previous one's factor (0.3, then 0.09, then 0.027, ...) —
+ * strictly positive and shrinking, so more matched domains can only raise
+ * the score, never lower it (see scoreSignalDomains). */
+const ADDITIONAL_DOMAIN_FACTOR = 0.3;
 
 const DOMAIN_WEIGHTS: Record<RiskDomain, number> = {
   shortage: 1,
@@ -207,24 +212,38 @@ function scoreSignalDomains(signals: PreparedSignal[]): RiskScoreComponent[] {
     }
   }
 
-  const domainSignals = Array.from(strongestByDomain.values()).sort((a, b) =>
-    a.domain.localeCompare(b.domain),
-  );
-  const totalWeight = domainSignals.reduce(
-    (sum, signal) => sum + DOMAIN_WEIGHTS[signal.domain],
-    0,
-  );
+  // Monotonic by construction, unlike the old normalized-average formula
+  // (where adding a weaker second domain could shrink the strongest
+  // domain's share of a fixed total and LOWER the score). Ranked
+  // strongest-potential-first; the strongest domain contributes at full
+  // weight, each additional domain contributes at a strictly positive but
+  // geometrically diminishing fraction (ADDITIONAL_DOMAIN_FACTOR per rank).
+  // A running budget clamps the total to SIGNAL_COMPONENT_CAP, same ceiling
+  // as before — clamping a monotonic running sum stays monotonic, it just
+  // plateaus once the cap is reached.
+  const domainSignals = Array.from(strongestByDomain.values()).sort((a, b) => {
+    const potentialDelta =
+      b.adjustedSeverity * DOMAIN_WEIGHTS[b.domain] -
+      a.adjustedSeverity * DOMAIN_WEIGHTS[a.domain];
+    return potentialDelta !== 0 ? potentialDelta : a.domain.localeCompare(b.domain);
+  });
 
-  return domainSignals.map((signal) => {
-    const normalizedWeight = DOMAIN_WEIGHTS[signal.domain] / totalWeight;
+  let remainingBudget = SIGNAL_COMPONENT_CAP;
+  return domainSignals.map((signal, index) => {
+    const diminishingFactor = ADDITIONAL_DOMAIN_FACTOR ** index;
+    const effectiveWeight = DOMAIN_WEIGHTS[signal.domain] * diminishingFactor;
+    const rawContribution = signal.adjustedSeverity * effectiveWeight * SIGNAL_COMPONENT_CAP;
+    const contribution = round(Math.min(rawContribution, remainingBudget));
+    remainingBudget = Math.max(0, remainingBudget - contribution);
     return {
       factor: `signal_${signal.domain}`,
-      weight: round(normalizedWeight, 3),
+      weight: round(effectiveWeight, 3),
       rawValue: round(signal.adjustedSeverity * 100),
-      contribution: round(
-        signal.adjustedSeverity * normalizedWeight * SIGNAL_COMPONENT_CAP,
-      ),
-      explanation: `${formatDomain(signal.domain)} signal after freshness decay.`,
+      contribution,
+      explanation:
+        index === 0
+          ? `${formatDomain(signal.domain)} signal after freshness decay (strongest matched domain).`
+          : `${formatDomain(signal.domain)} signal after freshness decay (additional domain, diminishing weight).`,
       signalIds: signal.id ? [signal.id] : undefined,
     };
   });

@@ -85,7 +85,7 @@ export async function runRiskScoring(
 }
 
 async function scoreTenant(organizationId: string, asOf: Date) {
-  const inputs = await loadTenantScoreInputs(organizationId);
+  const inputs = await loadTenantScoreInputs(organizationId, asOf);
   let snapshots = 0;
   let changed = 0;
   let failed = 0;
@@ -190,8 +190,9 @@ async function scoreTenant(organizationId: string, asOf: Date) {
   };
 }
 
-async function loadTenantScoreInputs(
+export async function loadTenantScoreInputs(
   organizationId: string,
+  asOf: Date,
 ): Promise<TenantScoreInput[]> {
   const [
     itemRows,
@@ -261,7 +262,11 @@ async function loadTenantScoreInputs(
   const latestInventoryByItem = new Map<string, number | null>();
   for (const row of inventoryRows) {
     if (!latestInventoryByItem.has(row.itemId)) {
-      latestInventoryByItem.set(row.itemId, row.daysOnHand ?? null);
+      // Stale inventory (older than the freshness window) is treated as
+      // "no data" rather than used as-is — a 6-month-old on-hand count
+      // shouldn't silently drive today's score forever.
+      const daysOnHand = isInventoryFresh(row.asOf, asOf) ? row.daysOnHand ?? null : null;
+      latestInventoryByItem.set(row.itemId, daysOnHand);
     }
   }
 
@@ -333,6 +338,14 @@ async function loadTenantScoreInputs(
       previousSnapshots: previousSnapshotsByItem.get(item.id) ?? [],
     };
   });
+}
+
+export const INVENTORY_FRESHNESS_WINDOW_DAYS = 30;
+
+export function isInventoryFresh(inventoryAsOf: Date, scoringAsOf: Date): boolean {
+  const ageDays =
+    (scoringAsOf.getTime() - inventoryAsOf.getTime()) / (1000 * 60 * 60 * 24);
+  return ageDays <= INVENTORY_FRESHNESS_WINDOW_DAYS;
 }
 
 function toScoringSignal(row: {

@@ -6,7 +6,6 @@ import {
   asStringArray,
   fetchJson,
   firstString,
-  isoDateKey,
   parseDate,
   stableKey,
   stalenessFromDate,
@@ -95,7 +94,12 @@ export function normalizeOpenFdaDrugShortage(
     stalenessStatus: stalenessFromDate(updateDate, fetchedAt),
     evidenceUrl: "https://www.accessdata.fda.gov/scripts/drugshortages/",
     raw: record,
-    dedupeKey: stableKey("shortage", ndc ?? titleName, status, isoDateKey(updateDate)),
+    // Stable identity only — NOT status/updateDate, which change as FDA
+    // revises the SAME shortage record over time. A volatile key here would
+    // create a new row per revision instead of updating one row in place,
+    // and would break reconciliation (resolved-signal detection treats a
+    // changed key as "a different signal", never as the same one resolving).
+    dedupeKey: stableKey("shortage", ndc ?? titleName),
     matchHints: {
       ndc,
       supplierName: company,

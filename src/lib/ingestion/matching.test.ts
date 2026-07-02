@@ -89,3 +89,71 @@ describe("matchSignalToCatalog", () => {
     expect(match).toMatchObject({ itemId: "item_2", reason: "keyword" });
   });
 });
+
+describe("matchSignalToCatalog ambiguous country matches (A9)", () => {
+  const ambiguousCatalog: TenantCatalog = {
+    organizationId: "org_1",
+    items: [],
+    identifiers: [],
+    suppliers: [
+      { id: "supplier_de_1", name: "B. Braun", countryOfOrigin: "DE" },
+      { id: "supplier_de_2", name: "Fresenius Kabi", countryOfOrigin: "DE" },
+    ],
+    itemSuppliers: [],
+  };
+
+  it("does not guess a supplier when multiple same-country candidates are uncorroborated", () => {
+    const match = matchSignalToCatalog(
+      { ...baseSignal, matchHints: { countryCode: "Germany" } },
+      ambiguousCatalog,
+    );
+    expect(match).toBeNull();
+  });
+
+  it("resolves the ambiguous country match when the text corroborates one specific supplier", () => {
+    const match = matchSignalToCatalog(
+      {
+        ...baseSignal,
+        title: "Fresenius Kabi flags dialysis concentrate shortage",
+        matchHints: { countryCode: "Germany" },
+      },
+      ambiguousCatalog,
+    );
+    expect(match).toMatchObject({
+      supplierId: "supplier_de_2",
+      reason: "country",
+      matchedValue: "DE",
+    });
+  });
+});
+
+describe("matchSignalToCatalog keyword token-boundary matching (A21)", () => {
+  const gloveCatalog: TenantCatalog = {
+    organizationId: "org_1",
+    items: [{ id: "item_glove", name: "Glove", internalSku: null }],
+    identifiers: [],
+    suppliers: [],
+    itemSuppliers: [],
+  };
+
+  it("does not match an item name that is a bare substring of an unrelated word", () => {
+    const match = matchSignalToCatalog(
+      {
+        ...baseSignal,
+        matchHints: {
+          keywords: ["Gloversville regional distribution center recall"],
+        },
+      },
+      gloveCatalog,
+    );
+    expect(match).toBeNull();
+  });
+
+  it("still matches the item name when it appears as a whole word", () => {
+    const match = matchSignalToCatalog(
+      { ...baseSignal, matchHints: { keywords: ["Nitrile glove shortage reported"] } },
+      gloveCatalog,
+    );
+    expect(match).toMatchObject({ itemId: "item_glove", reason: "keyword" });
+  });
+});
