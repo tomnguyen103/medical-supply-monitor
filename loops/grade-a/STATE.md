@@ -12,6 +12,22 @@ health-audit lanes" campaign. Read this FIRST every run. Plan doc:
 - Merged PR count so far: 1 / 12 (hard budget)
 - Consecutive gate-failure count (current phase): 0
 
+**Local `npm run lint` / `eslint .` pollution (discovered during P2, not a
+repo bug):** an unrelated, harness-managed nested git worktree at
+`.claude/worktrees/<name>/` (visible via `git worktree list`; a different
+concurrent Claude Code session builds the app there) can accumulate a
+`.next/` build with hundreds of lint "errors" — all bundled third-party
+code, none of it this repo's source. `eslint.config.mjs`'s `ignores` uses
+`.next/**` (root-relative only), so it doesn't catch nested `.next` folders
+under `.claude/worktrees/**`. A fix (`**/.next/**` + excluding `.claude/**`
+entirely) is blocked by this repo's own `config-protection` hook — a
+legitimate guardrail against loosening lint config, so left alone rather
+than worked around. **Not a real problem for the merge gate**: GitHub
+Actions CI runs on a fresh checkout with no such worktree and is
+unaffected (verified genuinely green, not just "passing while polluted").
+For local self-verification when this shows up: `npx eslint src` scopes
+around it without touching any committed config.
+
 **gh auth quirk (discovered during P1, applies to every phase hereafter):**
 the active `gh` credential (`GH_TOKEN` env var, a fine-grained PAT) can create
 branches/PRs/comments/merges fine but returns 403 on anything Actions/checks
