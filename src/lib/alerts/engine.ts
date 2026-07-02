@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import * as Sentry from "@sentry/nextjs";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
@@ -15,7 +16,7 @@ import {
   type AlertRuleLike,
   type SnapshotLike,
 } from "@/lib/alerts/core";
-import { deliverAlert } from "@/lib/alerts/delivery";
+import { deliverAlert, type DeliveryTarget } from "@/lib/alerts/delivery";
 import type { AlertChannel } from "@/lib/alerts/types";
 import { db, isDatabaseConfigured } from "@/lib/db";
 import {
@@ -43,6 +44,11 @@ export interface AlertEvaluationSummary {
   suppressed: number;
   awaitingApproval: number;
   failed: number;
+  /** Orgs whose evaluation threw an unhandled exception — distinct from
+   * `failed`, which counts individual alert-delivery failures (a normal,
+   * expected outcome). Callers gating on "did everything fail" should use
+   * this, not `failed`. */
+  tenantsFailed: number;
 }
 
 export type AlertApprovalOutcome =
@@ -76,27 +82,37 @@ export async function runAlertEvaluation(
       suppressed: 0,
       awaitingApproval: 0,
       failed: 0,
+      tenantsFailed: 0,
     };
   }
 
   const asOf = options.asOf ?? new Date();
   const orgRows = await db.select({ id: organizations.id }).from(organizations);
   const totals = emptySummary();
+  let tenantsFailed = 0;
 
   for (const org of orgRows) {
-    const tenant = await evaluateTenantAlerts(org.id, asOf);
-    totals.rules += tenant.rules;
-    totals.events += tenant.events;
-    totals.briefs += tenant.briefs;
-    totals.sent += tenant.sent;
-    totals.suppressed += tenant.suppressed;
-    totals.awaitingApproval += tenant.awaitingApproval;
-    totals.failed += tenant.failed;
+    try {
+      const tenant = await evaluateTenantAlerts(org.id, asOf);
+      totals.rules += tenant.rules;
+      totals.events += tenant.events;
+      totals.briefs += tenant.briefs;
+      totals.sent += tenant.sent;
+      totals.suppressed += tenant.suppressed;
+      totals.awaitingApproval += tenant.awaitingApproval;
+      totals.failed += tenant.failed;
+    } catch (error) {
+      Sentry.captureException(error, {
+        extra: { organizationId: org.id, phase: "alert-evaluation" },
+      });
+      tenantsFailed += 1;
+    }
   }
 
   return {
     ok: totals.failed === 0,
     tenants: orgRows.length,
+    tenantsFailed,
     ...totals,
   };
 }
@@ -117,6 +133,7 @@ export async function runAlertEvaluationForOrganization(
       suppressed: 0,
       awaitingApproval: 0,
       failed: 0,
+      tenantsFailed: 0,
     };
   }
 
@@ -125,6 +142,7 @@ export async function runAlertEvaluationForOrganization(
   return {
     ok: tenant.failed === 0,
     tenants: 1,
+    tenantsFailed: 0,
     ...tenant,
   };
 }
@@ -190,10 +208,12 @@ export async function approveAlertEventForDelivery({
   let deliveryStatus: DeliverableAlertStatus = "failed";
   let deliveryError: string | undefined;
   try {
+    const target = await loadDeliveryTarget(organizationId);
     const delivery = await deliverAlert({
       channel: event.channel,
       title: event.title,
       body: event.body ?? "",
+      target,
     });
     deliveryStatus = alertStatusForDeliveryStatus(delivery.status);
     deliveryError = delivery.error;
@@ -276,9 +296,10 @@ export async function rejectAlertEventForDelivery({
 }
 
 async function evaluateTenantAlerts(organizationId: string, asOf: Date) {
-  const [rules, snapshots] = await Promise.all([
+  const [rules, snapshots, target] = await Promise.all([
     loadEnabledRules(organizationId),
     loadLatestSnapshots(organizationId),
+    loadDeliveryTarget(organizationId),
   ]);
   const totals = emptySummary();
   totals.rules = rules.length;
@@ -301,6 +322,7 @@ async function evaluateTenantAlerts(organizationId: string, asOf: Date) {
           payload,
           channel,
           asOf,
+          target,
         });
         applyOutcome(totals, outcome);
       }
@@ -308,6 +330,18 @@ async function evaluateTenantAlerts(organizationId: string, asOf: Date) {
   }
 
   return totals;
+}
+
+async function loadDeliveryTarget(organizationId: string): Promise<DeliveryTarget> {
+  const [row] = await db
+    .select({
+      slackWebhookUrl: organizations.slackWebhookUrl,
+      alertEmail: organizations.alertEmail,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  return row ?? { slackWebhookUrl: null, alertEmail: null };
 }
 
 async function loadEnabledRules(organizationId: string): Promise<RuleRow[]> {
@@ -376,6 +410,7 @@ async function createRuleAlertEvent({
   payload,
   channel,
   asOf,
+  target,
 }: {
   organizationId: string;
   rule: RuleRow;
@@ -383,6 +418,7 @@ async function createRuleAlertEvent({
   payload: AlertPayload;
   channel: AlertChannel;
   asOf: Date;
+  target: DeliveryTarget;
 }): Promise<EventOutcome> {
   const dedupeKey = stableKey(
     "rule-alert",
@@ -393,14 +429,13 @@ async function createRuleAlertEvent({
   );
   const requiresApproval =
     snapshot.riskLevel === "critical" && rule.requireApprovalForCritical;
-  const outcome = await insertAlertEvent({
+  const outcome = await insertOrRetryQueuedAlertEvent({
       organizationId,
       ruleId: rule.id,
       itemId: snapshot.itemId,
       snapshotId: snapshot.id,
       severity: snapshot.riskLevel,
       channel,
-      status: "queued",
       title: payload.title,
       body: payload.body,
       evidence: payload.evidence,
@@ -412,15 +447,14 @@ async function createRuleAlertEvent({
     });
   if (!outcome.eventId) return outcome;
 
-  const cooldown = await reserveCooldown({
+  const key = cooldownKey({
     organizationId,
-    itemId: snapshot.itemId,
     ruleId: rule.id,
+    itemId: snapshot.itemId,
     channel,
     riskLevel: snapshot.riskLevel,
-    cooldownMinutes: rule.cooldownMinutes,
   });
-  if (cooldown.suppressed) {
+  if (rule.cooldownMinutes > 0 && (await isCooldownActive(key))) {
     await updateAlertEventStatus({
       organizationId,
       eventId: outcome.eventId,
@@ -447,7 +481,7 @@ async function createRuleAlertEvent({
     return { ...outcome, awaitingApproval: 1 };
   }
 
-  const delivery = await deliverAlert({ channel, title: payload.title, body: payload.body });
+  const delivery = await deliverAlert({ channel, title: payload.title, body: payload.body, target });
   const status =
     delivery.status === "sent"
       ? "sent"
@@ -461,6 +495,12 @@ async function createRuleAlertEvent({
     error: delivery.error,
     asOf,
   });
+
+  // Cooldown starts only after a confirmed send — a failed/suppressed
+  // attempt must not block the next retry (see insertOrRetryQueuedAlertEvent).
+  if (status === "sent") {
+    await startCooldown(key, rule.cooldownMinutes);
+  }
 
   return {
     ...outcome,
@@ -594,6 +634,77 @@ async function insertAlertEvent({
   };
 }
 
+/**
+ * Rule-alert path only (daily briefs use insertAlertEvent's plain
+ * onConflictDoNothing — they're never retried). A `failed` row for this
+ * rule+snapshot+channel is atomically reset to "queued" and retried; a
+ * `sent`/`suppressed`/`awaiting_approval` row is left alone. The `setWhere`
+ * condition makes this a single atomic upsert — no separate SELECT, no
+ * race between concurrent evaluation runs.
+ */
+async function insertOrRetryQueuedAlertEvent({
+  organizationId,
+  ruleId,
+  itemId,
+  snapshotId,
+  severity,
+  channel,
+  title,
+  body,
+  evidence,
+  freshness,
+  confidence,
+  dedupeKey,
+  requiresApproval,
+  asOf,
+}: {
+  organizationId: string;
+  ruleId: string;
+  itemId: string;
+  snapshotId: string;
+  severity: SnapshotLike["riskLevel"];
+  channel: AlertChannel;
+  title: string;
+  body: string;
+  evidence: Record<string, unknown>;
+  freshness: Record<string, unknown>;
+  confidence: number;
+  dedupeKey: string;
+  requiresApproval: boolean;
+  asOf: Date;
+}): Promise<EventOutcome> {
+  const [row] = await db
+    .insert(alertEvents)
+    .values({
+      organizationId,
+      ruleId,
+      itemId,
+      snapshotId,
+      severity,
+      channel,
+      status: "queued",
+      title,
+      body,
+      evidence,
+      freshness,
+      confidence,
+      dedupeKey,
+      requiresApproval,
+      scheduledFor: asOf,
+      sentAt: null,
+      error: null,
+    })
+    .onConflictDoUpdate({
+      target: [alertEvents.organizationId, alertEvents.dedupeKey],
+      set: { status: "queued", error: null, scheduledFor: asOf },
+      setWhere: eq(alertEvents.status, "failed"),
+    })
+    .returning({ id: alertEvents.id });
+
+  if (!row) return { created: false };
+  return { created: true, eventId: row.id, events: 1 };
+}
+
 async function createHumanApprovalTask({
   organizationId,
   alertEventId,
@@ -660,26 +771,20 @@ async function completeHumanApprovalTask({
   return completed.length > 0;
 }
 
-async function reserveCooldown({
+function cooldownKey({
   organizationId,
   ruleId,
   itemId,
   channel,
   riskLevel,
-  cooldownMinutes,
 }: {
   organizationId: string;
   ruleId: string;
   itemId: string;
   channel: AlertChannel;
   riskLevel: SnapshotLike["riskLevel"];
-  cooldownMinutes: number;
-}): Promise<{ suppressed: boolean; configured: boolean }> {
-  if (cooldownMinutes <= 0) return { suppressed: false, configured: false };
-  const redis = tryGetRedis();
-  if (!redis) return { suppressed: false, configured: false };
-
-  const key = [
+}): string {
+  return [
     "msm",
     "alert-cooldown",
     organizationId,
@@ -688,11 +793,33 @@ async function reserveCooldown({
     channel,
     riskLevel,
   ].join(":");
-  const reserved = await redis.set(key, "1", {
-    ex: cooldownMinutes * 60,
-    nx: true,
-  });
-  return { suppressed: reserved !== "OK", configured: true };
+}
+
+/** Read-only check, called before attempting delivery. Fails open on a
+ * Redis hiccup — a cooldown-check failure must never block a real alert. */
+async function isCooldownActive(key: string): Promise<boolean> {
+  const redis = tryGetRedis();
+  if (!redis) return false;
+  try {
+    const value = await redis.get(key);
+    return value !== null;
+  } catch (error) {
+    Sentry.captureException(error, { extra: { key, phase: "cooldown-check" } });
+    return false;
+  }
+}
+
+/** Called only after a confirmed `sent` delivery — see createRuleAlertEvent.
+ * A failed/suppressed attempt must never start the cooldown window. */
+async function startCooldown(key: string, cooldownMinutes: number): Promise<void> {
+  if (cooldownMinutes <= 0) return;
+  const redis = tryGetRedis();
+  if (!redis) return;
+  try {
+    await redis.set(key, "1", { ex: cooldownMinutes * 60 });
+  } catch (error) {
+    Sentry.captureException(error, { extra: { key, phase: "cooldown-start" } });
+  }
 }
 
 function highestSeverity(snapshots: SnapshotLike[]) {
@@ -714,10 +841,9 @@ type EventOutcome = {
   failed?: number;
 };
 
-function applyOutcome(
-  totals: Omit<AlertEvaluationSummary, "ok" | "skipped" | "tenants">,
-  outcome: EventOutcome,
-) {
+type TenantTotals = Omit<AlertEvaluationSummary, "ok" | "skipped" | "tenants" | "tenantsFailed">;
+
+function applyOutcome(totals: TenantTotals, outcome: EventOutcome) {
   totals.events += outcome.events ?? 0;
   totals.sent += outcome.sent ?? 0;
   totals.suppressed += outcome.suppressed ?? 0;
@@ -725,7 +851,7 @@ function applyOutcome(
   totals.failed += outcome.failed ?? 0;
 }
 
-function emptySummary(): Omit<AlertEvaluationSummary, "ok" | "skipped" | "tenants"> {
+function emptySummary(): TenantTotals {
   return {
     rules: 0,
     events: 0,

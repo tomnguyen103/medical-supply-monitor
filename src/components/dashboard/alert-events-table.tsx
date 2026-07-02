@@ -15,6 +15,17 @@ import { DataTable } from "./data-table";
 
 const muted = <span className="text-muted-foreground">-</span>;
 
+// <form action={...}> requires a void-returning function; these actions now
+// return a typed AlertActionOutcome (A19), so wrap for this fire-and-forget
+// usage.
+async function approveEvent(eventId: string): Promise<void> {
+  await approveAlertEventAction(eventId);
+}
+
+async function rejectEvent(eventId: string): Promise<void> {
+  await rejectAlertEventAction(eventId);
+}
+
 const columns: ColumnDef<AlertEventListRow>[] = [
   {
     accessorKey: "title",
@@ -111,7 +122,7 @@ const columns: ColumnDef<AlertEventListRow>[] = [
     cell: ({ row }) =>
       row.original.requiresApproval && row.original.status === "awaiting_approval" ? (
         <div className="flex flex-wrap gap-2">
-          <form action={approveAlertEventAction.bind(null, row.original.id)}>
+          <form action={approveEvent.bind(null, row.original.id)}>
             <Button
               type="submit"
               size="sm"
@@ -120,7 +131,7 @@ const columns: ColumnDef<AlertEventListRow>[] = [
               Approve
             </Button>
           </form>
-          <form action={rejectAlertEventAction.bind(null, row.original.id)}>
+          <form action={rejectEvent.bind(null, row.original.id)}>
             <Button
               type="submit"
               variant="outline"

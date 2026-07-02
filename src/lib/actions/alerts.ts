@@ -20,14 +20,46 @@ import {
 import type { AlertChannel } from "@/lib/alerts/types";
 import { enforceActionRateLimit } from "@/lib/security/rate-limit";
 
+export interface AlertActionOutcome {
+  ok: boolean;
+  message: string;
+}
+
+function failure(message: string): AlertActionOutcome {
+  return { ok: false, message };
+}
+
+/** Shared guards: returns the org context or an outcome to short-circuit on. */
+async function ready(
+  permission: "manage_alerts" | "run_operations",
+  action: string,
+): Promise<{ ctx: OrgContext } | { outcome: AlertActionOutcome }> {
+  if (!isDatabaseConfigured) {
+    return { outcome: failure("Database is not configured.") };
+  }
+  const ctx = await getOrgContext();
+  if (!ctx) {
+    return { outcome: failure("Sign in and select an organization first.") };
+  }
+  if (!hasOrgPermission(ctx, permission)) {
+    return { outcome: failure("Your organization role cannot perform this action.") };
+  }
+  const rateLimit = await enforceActionRateLimit(ctx, action);
+  if (!rateLimit.ok) {
+    return { outcome: failure(rateLimit.error ?? "Too many requests.") };
+  }
+  return { ctx };
+}
+
 export async function createAlertRuleAction(
   formData: FormData,
-): Promise<void> {
-  const ctx = await ready("manage_alerts", "create_alert_rule");
-  if (!ctx) return;
+): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "create_alert_rule");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return failure("Rule name is required.");
 
   const domain = parseDomain(formData.get("domain"));
   const minSeverity = parseSeverity(formData.get("minSeverity")) ?? "high";
@@ -57,35 +89,39 @@ export async function createAlertRuleAction(
     channels,
   });
   revalidatePath("/dashboard/alerts");
+  return { ok: true, message: `Alert rule "${name}" created.` };
 }
 
 export async function setAlertRuleEnabledAction(
   ruleId: string,
   enabled: boolean,
-): Promise<void> {
-  const ctx = await ready("manage_alerts", "set_alert_rule_enabled");
-  if (!ctx) return;
+): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "set_alert_rule_enabled");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const [row] = await db
     .update(alertRules)
     .set({ enabled })
     .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
     .returning({ id: alertRules.id });
-  if (row) {
-    await auditAlertAction(ctx, "alerts.rule.enabled_update", ruleId, { enabled });
-  }
+  if (!row) return failure("Alert rule not found.");
+
+  await auditAlertAction(ctx, "alerts.rule.enabled_update", ruleId, { enabled });
   revalidatePath("/dashboard/alerts");
+  return { ok: true, message: enabled ? "Alert rule enabled." : "Alert rule disabled." };
 }
 
 export async function updateAlertRuleAction(
   ruleId: string,
   formData: FormData,
-): Promise<void> {
-  const ctx = await ready("manage_alerts", "update_alert_rule");
-  if (!ctx) return;
+): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "update_alert_rule");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return failure("Rule name is required.");
   const domain = parseDomain(formData.get("domain"));
   const minSeverity = parseSeverity(formData.get("minSeverity")) ?? "high";
   const channels = parseChannels(formData.getAll("channels"));
@@ -106,34 +142,39 @@ export async function updateAlertRuleAction(
     })
     .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
     .returning({ id: alertRules.id });
-  if (row) {
-    await auditAlertAction(ctx, "alerts.rule.update", ruleId, {
-      name,
-      domain,
-      minSeverity,
-      channels,
-    });
-  }
+  if (!row) return failure("Alert rule not found.");
+
+  await auditAlertAction(ctx, "alerts.rule.update", ruleId, {
+    name,
+    domain,
+    minSeverity,
+    channels,
+  });
   revalidatePath("/dashboard/alerts");
+  return { ok: true, message: `Alert rule "${name}" updated.` };
 }
 
-export async function deleteAlertRuleAction(ruleId: string): Promise<void> {
-  const ctx = await ready("manage_alerts", "delete_alert_rule");
-  if (!ctx) return;
+export async function deleteAlertRuleAction(ruleId: string): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "delete_alert_rule");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const [row] = await db
     .delete(alertRules)
     .where(and(eq(alertRules.id, ruleId), eq(alertRules.organizationId, ctx.orgId)))
     .returning({ id: alertRules.id });
-  if (row) {
-    await auditAlertAction(ctx, "alerts.rule.delete", ruleId);
-  }
+  if (!row) return failure("Alert rule not found.");
+
+  await auditAlertAction(ctx, "alerts.rule.delete", ruleId);
   revalidatePath("/dashboard/alerts");
+  return { ok: true, message: "Alert rule deleted." };
 }
 
-export async function runAlertEvaluationAction(): Promise<void> {
-  const ctx = await ready("run_operations", "run_alert_evaluation");
-  if (!ctx) return;
+export async function runAlertEvaluationAction(): Promise<AlertActionOutcome> {
+  const gate = await ready("run_operations", "run_alert_evaluation");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
+
   const result = await runAlertEvaluationForOrganization(ctx.orgId);
   await auditAlertAction(ctx, "alerts.evaluate", ctx.orgId, {
     events: result.events,
@@ -141,11 +182,18 @@ export async function runAlertEvaluationAction(): Promise<void> {
     failed: result.failed,
   });
   revalidatePath("/dashboard/alerts");
+  return {
+    ok: result.ok,
+    message: result.ok
+      ? `Evaluated ${result.rules} rule(s), ${result.events} event(s).`
+      : `Evaluation completed with ${result.failed} failure(s).`,
+  };
 }
 
-export async function approveAlertEventAction(eventId: string): Promise<void> {
-  const ctx = await ready("manage_alerts", "approve_alert_event");
-  if (!ctx) return;
+export async function approveAlertEventAction(eventId: string): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "approve_alert_event");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const result = await approveAlertEventForDelivery({
     organizationId: ctx.orgId,
@@ -154,11 +202,26 @@ export async function approveAlertEventAction(eventId: string): Promise<void> {
   });
   await auditAlertAction(ctx, "alerts.event.approve", eventId, result);
   revalidatePath("/dashboard/alerts");
+  if (!result.ok) {
+    return failure(
+      result.reason === "not-found"
+        ? "Alert event not found."
+        : "Alert event is not awaiting approval.",
+    );
+  }
+  return {
+    ok: true,
+    message:
+      result.status === "approved" && result.error
+        ? `Approved, but delivery reported: ${result.error}`
+        : "Alert approved and delivered.",
+  };
 }
 
-export async function rejectAlertEventAction(eventId: string): Promise<void> {
-  const ctx = await ready("manage_alerts", "reject_alert_event");
-  if (!ctx) return;
+export async function rejectAlertEventAction(eventId: string): Promise<AlertActionOutcome> {
+  const gate = await ready("manage_alerts", "reject_alert_event");
+  if ("outcome" in gate) return gate.outcome;
+  const { ctx } = gate;
 
   const result = await rejectAlertEventForDelivery({
     organizationId: ctx.orgId,
@@ -167,17 +230,14 @@ export async function rejectAlertEventAction(eventId: string): Promise<void> {
   });
   await auditAlertAction(ctx, "alerts.event.reject", eventId, result);
   revalidatePath("/dashboard/alerts");
-}
-
-async function ready(
-  permission: "manage_alerts" | "run_operations",
-  action: string,
-): Promise<OrgContext | null> {
-  if (!isDatabaseConfigured) return null;
-  const ctx = await getOrgContext();
-  if (!ctx || !hasOrgPermission(ctx, permission)) return null;
-  const rateLimit = await enforceActionRateLimit(ctx, action);
-  return rateLimit.ok ? ctx : null;
+  if (!result.ok) {
+    return failure(
+      result.reason === "not-found"
+        ? "Alert event not found."
+        : "Alert event is not awaiting approval.",
+    );
+  }
+  return { ok: true, message: "Alert rejected." };
 }
 
 async function auditAlertAction(
