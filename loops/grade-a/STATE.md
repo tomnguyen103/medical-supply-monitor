@@ -319,6 +319,94 @@ A4 problem is one level up, at the Inngest orchestration layer.
 shared helper is P7's job, not P3's — P3 only fixes the bug both copies
 shared (done in P2), doesn't deduplicate them.
 
+## P3 review findings (2026-07-02, applied before merge)
+
+Independent code-reviewer subagent: APPROVE, one real Important finding,
+fixed before requesting CodeRabbit:
+- `scoringTotallyFailed` (functions.ts) had a genuine bug — `items === 0 &&
+  snapshots === 0` tripped "total failure" even for a legitimately empty
+  scoring run (e.g. a freshly onboarded org with no catalog yet), which
+  would have caused an unnecessary whole-pipeline retry — exactly the harm
+  A4 exists to prevent. Fixed to `items > 0 && failed === items`, verified
+  against `scoreTenant`'s actual source (`snapshots.ts`): every considered
+  item always lands in exactly one of `snapshots`/`failed`, so `failed ===
+  items` (with `items > 0`) is the precise "100% failed" signal. Old test
+  had encoded the buggy behavior — fixed, plus added the empty-catalog
+  regression case.
+- Two Suggestion-level items also applied: `dailyRiskRefresh`'s `ok` field
+  recomputed properly instead of hardcoded `true` (informational only,
+  nothing reads it); one-line comment added noting the pre-existing
+  "stuck in queued on a mid-delivery crash" gap (not fixed — reviewer
+  explicitly framed as a conscious future decision, not a blocker).
+
+**Process note:** mid-review, the reviewer agent's working directory HEAD
+reverted from the PR branch back to `main` between tool calls (it caught
+this via a commit-hash cross-check and re-verified). Traced this to the
+orchestrator (me) running `git checkout main` concurrently for a STATE.md
+update while the review agent was still exploring the SAME shared working
+directory (no `isolation: "worktree"`) — one of my own git commands most
+likely raced with the agent's file reads. This also caused a real mistake
+here: a STATE.md commit meant for `main` landed on `fix/alert-loop-
+reliability` instead (caught immediately since the commit's branch name
+didn't match expectations; fixed via `git reset --hard` on the unpushed
+stray commit, then redone correctly on `main` with the branch verified
+immediately before the commit). Saved as a standing feedback memory
+(`feedback-concurrent-agent-git-races`) — future phases should avoid
+mutating git branch state while a non-worktree-isolated background agent
+may still be reading the working directory.
+
+## P4 research (2026-07-02, via Explore agent — not yet implemented)
+
+All 6 findings (A5, A9, A20, A21, A23 — A5 covers two sub-claims)
+re-verified against current code, confirmed accurate:
+
+- **A5a (signals never resolved):** confirmed — `persistence.ts:93`
+  hardcodes `status: "active"` on every upsert; repo-wide search found
+  zero code anywhere that ever transitions a signal to `"resolved"`
+  (`signalStatusEnum` already has the value, schema.ts — just unused). No
+  reconciliation pass exists at all.
+- **A5b (volatile dedupe key):** confirmed — `openfda-drug-
+  shortages.ts:98`'s `dedupeKey` includes the source API's `status` and
+  `update_date` fields, both of which change between fetches of the SAME
+  underlying shortage, causing duplicate rows instead of one updated row.
+- **A9 (loose country match):** confirmed — `matching.ts:103-115`'s
+  country-fallback does `catalog.suppliers.find(candidate => country
+  matches)` with zero corroboration (no keyword/region check), returning
+  an arbitrary supplier when multiple suppliers share a country. Existing
+  test (`matching.test.ts:71-82`) only covers the single-supplier happy
+  path, not the ambiguous-match case.
+- **A20 (non-monotonic scoring):** confirmed AND reproduced numerically —
+  `scoring.ts:213-226` normalizes each domain's weight by `totalWeight`
+  (sum of active domains' weights), so adding a second, weaker-domain
+  signal shrinks the first signal's normalized weight and can LOWER the
+  total score. Worked example in the research report: 1 signal → 58.5,
+  same signal + a weaker second-domain signal → 49.4 (decreased despite
+  adding risk). `SCORING_VERSION` currently `"v0.2.0"` (bump on fix).
+  Fixture `risk/__fixtures__/scoring-input.json` expects score 71 — will
+  need deliberate updating. Existing tests do NOT catch monotonicity
+  (verified: no test compares N vs N+1 signals).
+- **A21 (short/substring item-name matches):** confirmed but *partially*
+  mitigated already — `matching.ts:170` already filters keywords to `>= 4`
+  chars before matching, which blocks the worst "IV"-in-"IVORY" cases. The
+  remaining gap is `.includes()` at lines 177-179 having no token-boundary
+  check, so a 4+ char keyword can still match as a bare substring inside
+  an unrelated longer word. Scope the fix accordingly — this is a
+  precision improvement on an already-partially-guarded path, not a
+  wide-open hole.
+- **A23 (inventory never goes stale):** confirmed — `snapshots.ts:261-266`
+  takes the latest `inventorySnapshots` row per item by `asOf` with no
+  freshness evaluation at all; contrast `riskSignals`, which already have
+  a `stalenessStatus` column and a reusable `stalenessFromDate()` helper
+  (`connectors/helpers.ts:90-100`, fresh ≤7d / aging ≤30d / stale ≤90d /
+  else expired) that inventory could reuse but doesn't. `inventorySnapshots`
+  has no staleness column at all today.
+
+**P4 branch dependency:** none of P4's target files (`persistence.ts`,
+`openfda-drug-shortages.ts`, `matching.ts`, `scoring.ts`,
+`risk/snapshots.ts`) overlap with anything P3 touched — safe to branch P4
+off main immediately, no need to wait for PR #13 to merge first (unlike
+P3, which had to wait for P2).
+
 ## Human gates hit
 
 None yet.
