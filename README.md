@@ -179,6 +179,11 @@ These are enforced in the data model and architecture, not toggles:
 - Set the env groups (`development`, `preview`, `production`) in Vercel
 - Run migrations via a controlled release step, not automatically on previews
 - The Inngest endpoint is exposed at `/api/inngest`
+- CI (lint, typecheck, test, build) runs on every PR and on `main` via
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
-See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full plan and phase
-breakdown, and [`AGENTS.md`](AGENTS.md) for the working agreement.
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the full cold-start
+checklist (env, migrations, Inngest Cloud sync, Clerk org setup) and the
+migration rollback procedure, [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md)
+for the full plan and phase breakdown, and [`AGENTS.md`](AGENTS.md) for the
+working agreement.
