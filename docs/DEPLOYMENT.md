@@ -115,5 +115,5 @@ Organizations → Enable). Once enabled, users can create or be invited to an
 organization from Clerk's own UI (`<OrganizationSwitcher />` /
 `<CreateOrganization />` components, or the Clerk-hosted account portal).
 This app reads the active organization from the Clerk session
-(`auth().orgId`) — see the "Known gap" note in step 3 above for what that
-does and doesn't wire up on our side today.
+(`auth().orgId`) — see step 3 above for how that organization's row in our
+own database gets created (lazily, on first authenticated hit).

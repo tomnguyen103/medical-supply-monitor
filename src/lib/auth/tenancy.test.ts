@@ -115,6 +115,21 @@ describe("getOrgContext lazy org upsert", () => {
     expect(row?.name).toBe("fallback-co");
   });
 
+  it("falls back to the slug as name when Clerk resolves with an empty name", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "user_5",
+      orgId: "org_new_3",
+      orgRole: null,
+      orgSlug: "empty-name-co",
+    });
+    mockGetOrganization.mockResolvedValue({ name: "", slug: "empty-name-co" });
+
+    await getOrgContext();
+
+    const row = await fetchOrgRow("org_new_3");
+    expect(row?.name).toBe("empty-name-co");
+  });
+
   it("returns null and never touches the database when there is no active org", async () => {
     mockAuth.mockResolvedValue({
       userId: "user_4",

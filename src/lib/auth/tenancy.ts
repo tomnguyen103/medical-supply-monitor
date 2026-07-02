@@ -71,7 +71,7 @@ async function ensureOrganization(orgId: string, orgSlug: string | null): Promis
     try {
       const client = await clerkClient();
       const org = await client.organizations.getOrganization({ organizationId: orgId });
-      name = org.name;
+      name = org.name || name;
       slug = org.slug || slug;
     } catch (error) {
       console.error(
