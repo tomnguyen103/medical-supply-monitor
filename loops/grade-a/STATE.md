@@ -183,6 +183,125 @@ Re-verified against current code (post-P1 main):
 - 2026-07-02: P0 — reverted entire 21-file restyle set to HEAD (incoherent: depends on undefined CSS from the unrecoverable globals.css). Did not recreate `auth-appearance.ts` (would be dead code — zero importers once restyle reverted). Both are deviations from the campaign doc's literal P0 text, justified by re-verification evidence above; human can veto by popping `stash@{0}` and overriding.
 - 2026-07-02: P0 produced no PR (zero diff vs already-green main). Treating "phase counts only when MERGED" as satisfied by the tree already matching main — no merge action exists to take.
 
+## P3 plan (researched 2026-07-02, not yet implemented — waiting for P2 to merge)
+
+**Why waiting:** P3 edits `engine.ts` at the exact spot P2 fixed (the ambiguous-
+column `loadLatestSnapshots` bug). Branching P3 off current main (pre-P2)
+would reintroduce that bug into new work. Branch P3 off main only after PR
+#11 merges.
+
+Full research done via a dedicated Explore agent (re-verified every A4/A6/A7/
+A8/A19 claim against current code — see exact file:line quotes in that
+agent's report if needed; this section is the distilled design). One claim
+from the original audit did NOT hold up: **A4's `pipeline.ts:104` half is
+already fixed** — the connector loop already has per-connector try/catch
+(confirmed: one connector failing does not abort others). The real remaining
+A4 problem is one level up, at the Inngest orchestration layer.
+
+**Design, file by file:**
+
+1. **Schema (`schema.ts` + migration):** add nullable `slackWebhookUrl` /
+   `alertEmail` text columns to `organizations` (decision default). Run
+   `npm run db:generate` for the migration SQL.
+
+2. **`delivery.ts`:** add a `DeliveryTarget { slackWebhookUrl, alertEmail }`
+   param to `deliverAlert`. Resolve order: org target first, then (only when
+   `!env.app.isProduction`) fall back to the global env var — matches the
+   decision default "env fallback allowed only in non-production." Wrap both
+   `fetch()` calls in an `AbortController` with a 10s timeout
+   (`setTimeout(() => controller.abort(), 10_000)`, `signal: controller.signal`,
+   `clearTimeout` in a `finally`).
+
+3. **`engine.ts` — cooldown reordering + redelivery for failed:**
+   Currently `reserveCooldown` (a `redis.set(key, "1", {nx:true})`, uncaught)
+   runs BEFORE `deliverAlert`, so a failed delivery still burns the cooldown
+   window and can never be retried (confirmed: `createRuleAlertEvent`,
+   cooldown at line ~415, delivery at ~450). Also, `insertAlertEvent`'s
+   `onConflictDoNothing` on `(organizationId, dedupeKey)` means once an event
+   row exists for a given rule+snapshot+channel, ALL future evaluation runs
+   silently no-op for it forever — even if the original attempt failed. Fix,
+   split into two changes:
+   - Replace the single `reserveCooldown` with `isCooldownActive(key)` (a
+     read-only `redis.get`, try/catch → fail open on Redis errors so a
+     hiccup never blocks a real alert) called BEFORE attempting delivery,
+     and `startCooldown(key, cooldownMinutes)` (plain `redis.set` with `ex`,
+     try/catch) called ONLY after `delivery.status === "sent"`.
+   - Replace `insertAlertEvent`'s plain `onConflictDoNothing` (for the
+     rule-alert path only — NOT the daily-brief path, which stays as-is)
+     with `onConflictDoUpdate({ target: [organizationId, dedupeKey], set:
+     { status: "queued", error: null }, setWhere: eq(alertEvents.status,
+     "failed") })` — confirmed Drizzle's pg-core insert builder supports
+     `setWhere` for exactly this "atomic conditional upsert" pattern
+     (`node_modules/drizzle-orm/pg-core/query-builders/insert.d.ts`). A
+     `failed` row gets atomically reset to retry; `sent`/`suppressed`/
+     `awaiting_approval` rows are left alone (no `RETURNING` row → treated
+     as already-handled, same as today).
+   - Resolve the org's `DeliveryTarget` once per `evaluateTenantAlerts` call
+     (not per-alert) and thread it through to both `createRuleAlertEvent`
+     and `approveAlertEventForDelivery` (the human-approval delivery path
+     currently hardcodes no target at all — same bug, different call site).
+
+4. **`engine.ts` — A7 (per-org isolation + redis catch):** wrap the
+   `for (const org of orgRows)` loop body in `runAlertEvaluation` in
+   try/catch; on catch, `Sentry.captureException` with `{ organizationId }`
+   context and increment a NEW counter `tenantsFailed` (added to
+   `AlertEvaluationSummary`) — kept separate from the existing `failed`
+   counter (which counts individual alert-delivery failures, a normal
+   operational signal) so the two failure classes don't get conflated in the
+   Inngest gate (see #6). `redis.set` inside `startCooldown` (see #3) is
+   already try/catch-wrapped by construction of the new helper.
+
+5. **A8 — Sentry wiring:** add `Sentry.captureException` at the two
+   confirmed swallow sites — `pipeline.ts:185` (signal persistence catch
+   inside `persistSignalsForTenants`) and `graph.ts`'s daily-brief-workflow
+   catch (~line 250, inside `runDailyBriefWorkflows`) — plus the new engine.ts
+   per-org catch from #4. No official Inngest-Sentry middleware exists in the
+   SDK (confirmed via `node_modules/inngest` types); hand-roll via try/catch
+   + `captureException` around each `step.run()` body in `functions.ts`
+   rather than inventing a full middleware abstraction for 2 functions.
+
+6. **A4 — threshold gating in `functions.ts`:** replace the three
+   `if (!x.ok) throw` gates (line ~27 for ingestion/scoring, ~41 for alerts,
+   ~53 for AI) with total-failure checks instead of any-failure checks,
+   since partial failures are now individually isolated + Sentry-reported
+   and don't need to abort+retry the whole memoized pipeline:
+   - ingestion: `connectors.length > 0 && connectors.every(c => c.error)`
+   - scoring: `tenants > 0 && items === 0 && snapshots === 0`
+   - alerts: `tenants > 0 && tenantsFailed === tenants` (uses the NEW
+     counter from #4, not the existing `failed` — a handful of failed
+     individual deliveries across many orgs must never trip this)
+   Document the reasoning inline: this directly addresses the memoization
+   trap (Inngest `step.run()` replays cached ingestion/scoring results on
+   retry, so retrying over a partial alert failure wastes the retry
+   re-evaluating stale data instead of fresh).
+
+7. **A19 — typed alert actions:** copy `import.ts`'s `ImportOutcome`
+   pattern exactly (confirmed pattern: a `ready()` guard returning
+   `{ ctx } | { outcome }`, callers do `if ("outcome" in gate) return
+   gate.outcome`). Define `AlertActionOutcome` in `alerts.ts`, change all 7
+   exported actions from `Promise<void>` to `Promise<AlertActionOutcome>`.
+
+**Tests needed (red before / green after, per campaign rule):**
+- delivery: 10s timeout actually aborts; per-org target used when present;
+  env fallback only when `!isProduction`.
+- engine: cooldown NOT burned on a failed delivery (send fails → cooldown
+  key never set → same rule/item/channel retryable immediately); a
+  previously-`failed` event IS retried and updated to `sent` on the next
+  evaluation pass; one org throwing inside `evaluateTenantAlerts` does not
+  prevent a second org (seeded to succeed) from being evaluated in the same
+  `runAlertEvaluation` call — this is the direct regression test for the A7
+  bug that made the A26 bug (already fixed in P2) so severe.
+- actions/alerts.ts: guard failure returns a typed non-throwing result, not
+  void/undefined.
+- functions.ts threshold predicates: extract as small pure functions so they
+  can be unit-tested directly (partial failure among many → no throw; total
+  failure → throw) without needing a full Inngest test harness.
+
+**Not in scope for P3** (explicitly deferred): extracting the
+`engine.ts`/`graph.ts` duplicated `loadLatestSnapshots` query into one
+shared helper is P7's job, not P3's — P3 only fixes the bug both copies
+shared (done in P2), doesn't deduplicate them.
+
 ## Human gates hit
 
 None yet.
